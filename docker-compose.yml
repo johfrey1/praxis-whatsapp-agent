@@ -1,0 +1,42 @@
+# Compose de desarrollo/standalone. Para producción, ver README.md sobre cómo
+# integrar el servicio "whatsapp-agent" en el docker-compose.yml principal de Praxis
+# (así comparte la red praxis_default y queda detrás de Traefik).
+services:
+  whatsapp-agent:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./storage/documents:/app/storage/documents
+    depends_on:
+      whatsapp-agent-db:
+        condition: service_healthy
+    networks:
+      - default
+      - praxis_default
+
+  whatsapp-agent-db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: whatsapp_agent
+      POSTGRES_PASSWORD: whatsapp_agent
+      POSTGRES_DB: whatsapp_agent
+    volumes:
+      - whatsapp_agent_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U whatsapp_agent"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - default
+
+volumes:
+  whatsapp_agent_db_data:
+
+networks:
+  praxis_default:
+    external: true
