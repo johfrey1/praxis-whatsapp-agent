@@ -1,21 +1,36 @@
-# Compose de desarrollo/standalone. Para producción, ver README.md sobre cómo
-# integrar el servicio "whatsapp-agent" en el docker-compose.yml principal de Praxis
-# (así comparte la red praxis_default y queda detrás de Traefik).
+# Igual patrón que praxis-backend-academia y praxis-academia-front: cada servicio
+# vive en su propia carpeta con su propio docker-compose.yml, unido a la red externa
+# praxis_default (creada por el proyecto "praxis" que corre Traefik) y descubierto
+# por Traefik vía labels. Se levanta con: docker compose up -d --build
 services:
   whatsapp-agent:
     build: .
     env_file: .env
     restart: unless-stopped
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     volumes:
       - ./storage/documents:/app/storage/documents
     depends_on:
       whatsapp-agent-db:
         condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
     networks:
       - default
       - praxis_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=praxis_default"
+      - "traefik.http.routers.whatsapp-agent.rule=Host(`wa.academiapraxis.com`)"
+      - "traefik.http.routers.whatsapp-agent.entrypoints=websecure"
+      - "traefik.http.routers.whatsapp-agent.tls.certresolver=letsencrypt"
+      - "traefik.http.services.whatsapp-agent.loadbalancer.server.port=8000"
+      # Rate limiting: el webhook de Meta y el panel admin comparten el mismo host
+      - "traefik.http.middlewares.whatsapp-agent-ratelimit.ratelimit.average=30"
+      - "traefik.http.middlewares.whatsapp-agent-ratelimit.ratelimit.burst=60"
+      - "traefik.http.middlewares.whatsapp-agent-ratelimit.ratelimit.period=1s"
+      - "traefik.http.routers.whatsapp-agent.middlewares=whatsapp-agent-ratelimit"
 
   whatsapp-agent-db:
     image: postgres:16

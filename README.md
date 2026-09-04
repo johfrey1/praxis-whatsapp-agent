@@ -91,49 +91,38 @@ cuando el usuario lo pida.
 curl http://localhost:8000/admin/leads -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
-## Integración a producción (`/srv/praxis/docker-compose.yml`)
+## Integración a producción
 
-Agrega un servicio nuevo al compose principal, en la misma red `praxis_default`, detrás de
-Traefik con un subdominio propio (ej. `wa.academiapraxis.com`):
+Esta plataforma NO despliega Strapi ni el frontend desde un `docker-compose.yml` raíz único:
+cada app vive en su propia carpeta (`praxis-backend-academia/`, `praxis-academia-front/`), cada
+una con su propio `docker-compose.yml` y su propio proyecto de Docker Compose, unidas entre sí
+por la red **externa** `praxis_default` (creada por el proyecto `praxis` que corre Traefik en
+`/srv/praxis`). El agente de WhatsApp sigue exactamente el mismo patrón: vive aquí, en
+`praxis-whatsapp-agent/`, con su propio `docker-compose.yml` ya configurado con las labels de
+Traefik para `wa.academiapraxis.com` — no requiere tocar ningún otro `docker-compose.yml`.
 
-```yaml
-  whatsapp-agent:
-    build:
-      context: ./praxis-whatsapp-agent
-      dockerfile: Dockerfile
-    env_file: ./praxis-whatsapp-agent/.env
-    restart: always
-    volumes:
-      - ./praxis-whatsapp-agent/storage/documents:/app/storage/documents
-    depends_on:
-      whatsapp-agent-db:
-        condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.whatsapp-agent.rule=Host(`wa.academiapraxis.com`)"
-      - "traefik.http.routers.whatsapp-agent.entrypoints=websecure"
-      - "traefik.http.routers.whatsapp-agent.tls.certresolver=letsencrypt"
-      - "traefik.http.services.whatsapp-agent.loadbalancer.server.port=8000"
+Pasos para desplegar:
 
-  whatsapp-agent-db:
-    image: postgres:16
-    restart: always
-    environment:
-      POSTGRES_USER: whatsapp_agent
-      POSTGRES_PASSWORD: whatsapp_agent
-      POSTGRES_DB: whatsapp_agent
-    volumes:
-      - whatsapp_agent_db_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U whatsapp_agent"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-```
+1. `cp .env.example .env` y completa las credenciales reales (ver secciones anteriores).
+2. Confirma que la red externa ya existe (la crea el proyecto `praxis` de Traefik):
+   ```bash
+   docker network inspect praxis_default
+   ```
+3. Levanta el servicio:
+   ```bash
+   cd /srv/praxis/praxis-whatsapp-agent
+   docker compose up -d --build
+   ```
+   Traefik lo descubre automáticamente por las labels (igual que hace con `strapi` y `web`) y
+   emite el certificado TLS para `wa.academiapraxis.com` vía Let's Encrypt.
+4. Apunta el DNS de `wa.academiapraxis.com` (registro A) a la IP del servidor — este paso es
+   manual, fuera de Docker.
+5. En Meta, configura el webhook con `https://wa.academiapraxis.com/webhook`.
 
-Y agregar `whatsapp_agent_db_data:` a la sección `volumes:` de nivel superior. `DATABASE_URL` en
-el `.env` del agente debe apuntar a `whatsapp-agent-db` (nombre del servicio), y `STRAPI_BASE_URL`
-a `http://strapi:1337` (nombre del servicio Strapi ya definido en el compose principal).
+`STRAPI_BASE_URL=http://strapi:1337` funciona porque el contenedor `strapi` (definido en
+`praxis-backend-academia/docker-compose.yml`) también está unido a `praxis_default` y Docker
+resuelve su nombre de servicio como hostname dentro de esa red — se verificó en vivo que
+`strapi` resuelve correctamente desde otros contenedores de esa red.
 
 ## Tests
 
