@@ -20,7 +20,7 @@ async def send_main_menu(whatsapp_client, to: str) -> None:
     await whatsapp_client.send_interactive_list(
         to=to,
         header="Praxis English School",
-        body="¡Hola! Soy el asistente virtual de Praxis. ¿En qué te puedo ayudar hoy?",
+        body="¡Hola! Soy Antony, el asistente virtual de Praxis. ¿En qué te puedo ayudar hoy?",
         button_text="Ver opciones",
         sections=MAIN_MENU_SECTIONS,
     )
