@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import Depends
 
 from app.agent.claude_agent import run_agent_turn
-from app.agent.menu import MENU_TRIGGER_WORDS, send_main_menu
+from app.agent.menu import MEDIA_FALLBACK_TEXT, MENU_TRIGGER_WORDS, send_main_menu
 from app.agent.tools import ToolContext
 from app.config import get_settings
 from app.db.base import get_session
@@ -93,7 +93,19 @@ async def _handle_incoming_message(session, whatsapp_client, strapi_client, inco
     user_text = incoming.text or ""
     should_send_menu = was_new or user_text.strip().lower() in MENU_TRIGGER_WORDS
 
-    if user_text:
+    if not user_text and incoming.message_type in MEDIA_FALLBACK_TEXT:
+        # Audio/imagen/documento SIN texto/caption: antes se ignoraba en silencio.
+        # Respondemos con un mensaje claro en vez de dejar al usuario sin respuesta.
+        fallback_text = MEDIA_FALLBACK_TEXT[incoming.message_type]
+        await whatsapp_client.send_text(to=contact.wa_id, body=fallback_text)
+        await conversation_service.record_message(
+            session,
+            conversation,
+            direction=MessageDirection.outbound,
+            message_type=MessageType.text,
+            content=fallback_text,
+        )
+    elif user_text:
         history = await conversation_service.get_recent_messages(session, conversation, limit=20)
         tool_ctx = ToolContext(
             session=session,

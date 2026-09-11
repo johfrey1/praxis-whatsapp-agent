@@ -24,3 +24,18 @@ async def send_main_menu(whatsapp_client, to: str) -> None:
         button_text="Ver opciones",
         sections=MAIN_MENU_SECTIONS,
     )
+
+
+MEDIA_FALLBACK_TEXT = {
+    "audio": (
+        "Recibí tu nota de voz 🎧 Por ahora no puedo escucharla directamente. "
+        "¿Me escribes tu pregunta en texto? Si prefieres, escribe *asesor* para hablar con una persona."
+    ),
+    "image": (
+        "Recibí tu imagen 📷 Por ahora no puedo verla directamente. "
+        "¿Me cuentas en texto qué necesitas? Si prefieres, escribe *asesor* para hablar con una persona."
+    ),
+    "document": (
+        "Recibí tu documento 📄 Un asesor lo va a revisar. Mientras tanto, ¿en qué más te puedo ayudar?"
+    ),
+}
