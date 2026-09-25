@@ -14,6 +14,7 @@ import hmac
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,6 +31,7 @@ from app.db.models import (
 )
 from app.logging_config import get_logger
 from app.services import conversation_service
+from app.services.receipt_image import render_payment_receipt
 from app.whatsapp.client import WhatsAppClient
 from app.wompi.client import WompiClient, checkout_url
 
@@ -316,9 +318,37 @@ async def notify_payment_result(
         await send_payment_button(session, whatsapp_client, payment, contact.wa_id, conversation)
 
     if payment.status == PaymentStatus.approved:
+        try:
+            await send_receipt_image(whatsapp_client, payment, contact)
+        except Exception:
+            logger.exception("payment_receipt_image_failed", reference=payment.reference)
         await conversation_service.notify_staff(
             whatsapp_client,
             contact,
             f"Pago de cuota APROBADO: {format_cop(payment.amount_in_cents)} · contrato {payment.contract_number} "
             f"· cuenta {payment.account_number} · cédula {payment.national_id} · tx {payment.wompi_transaction_id}",
         )
+
+
+async def send_receipt_image(whatsapp_client: WhatsAppClient, payment: PaymentRequest, contact: Contact) -> None:
+    """Genera el comprobante como imagen, lo guarda como evidencia y lo envía al número de servicio."""
+    png = render_payment_receipt(payment, contact)
+
+    receipts_dir = Path(settings.document_storage_path) / "receipts"
+    receipts_dir.mkdir(parents=True, exist_ok=True)
+    (receipts_dir / f"{payment.reference}.png").write_bytes(png)
+
+    if not settings.receipt_numbers:
+        logger.warning("no_receipt_numbers_configured", reference=payment.reference)
+        return
+
+    media_id = await whatsapp_client.upload_media(png, f"comprobante-{payment.reference}.png", "image/png")
+    caption = (
+        f"Comprobante pago de cuota {format_cop(payment.amount_in_cents)} · contrato {payment.contract_number} "
+        f"· cédula {payment.national_id} · ref {payment.reference}"
+    )
+    for number in settings.receipt_numbers:
+        try:
+            await whatsapp_client.send_image_by_media_id(to=number, media_id=media_id, caption=caption)
+        except Exception:
+            logger.exception("payment_receipt_send_failed", reference=payment.reference, to=number)

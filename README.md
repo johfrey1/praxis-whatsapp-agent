@@ -103,7 +103,9 @@ Opción **💳 Pagar cuota** del menú (o escribiendo "quiero pagar mi cuota"):
    `GET /v1/transactions/{id}` y se guarda como evidencia en `payment_events` (payload crudo +
    transacción verificada). El estado final queda en `payment_requests`.
 3. Si el pago queda aprobado, el estudiante recibe el comprobante por WhatsApp (valor, medio,
-   ID de transacción, referencia) y se avisa a `STAFF_NOTIFICATION_NUMBERS`. Si es rechazado,
+   ID de transacción, referencia) y se avisa a `STAFF_NOTIFICATION_NUMBERS`. Además se genera el comprobante como **imagen PNG**,
+   se guarda en `storage/documents/receipts/<referencia>.png` y se envía a
+   `PAYMENT_RECEIPT_NUMBERS` (número de servicio). Si es rechazado,
    se le reenvía el link para reintentar.
 
 Configuración:

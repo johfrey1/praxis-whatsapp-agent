@@ -10,3 +10,4 @@ pydantic-settings==2.6.1
 python-multipart==0.0.19
 tenacity==9.0.0
 structlog==24.4.0
+Pillow==11.0.0

@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     wompi_events_secret: str = ""
     wompi_payment_link_ttl_hours: int = 24
     wompi_redirect_url: str = ""
+    # Número(s) de servicio (E.164 sin '+', separados por coma) que reciben la imagen del
+    # comprobante de cada pago aprobado
+    payment_receipt_numbers: str = ""
 
     # Admin API
     admin_api_key: str
@@ -46,6 +49,10 @@ class Settings(BaseSettings):
     @property
     def staff_numbers(self) -> list[str]:
         return [n.strip() for n in self.staff_notification_numbers.split(",") if n.strip()]
+
+    @property
+    def receipt_numbers(self) -> list[str]:
+        return [n.strip().lstrip("+") for n in self.payment_receipt_numbers.split(",") if n.strip()]
 
     @property
     def graph_api_base_url(self) -> str:

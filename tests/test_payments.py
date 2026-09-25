@@ -152,3 +152,20 @@ async def test_send_cta_url_payload(monkeypatch) -> None:
         "parameters": {"display_text": "Pagar cuota", "url": "https://checkout.wompi.co/l/abc"},
     }
     assert len(interactive["action"]["parameters"]["display_text"]) <= 20
+
+
+def test_render_payment_receipt_is_png() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from app.db.models import Contact, PaymentRequest, PaymentStatus
+    from app.services.receipt_image import render_payment_receipt
+
+    now = datetime.now(timezone.utc)
+    payment = PaymentRequest(
+        reference="PRX-TEST", national_id="1023456789", contract_number="CTR-1", account_number="1",
+        status=PaymentStatus.approved, amount_in_cents=15000000, payment_method_type="NEQUI",
+        wompi_transaction_id="TX-1", paid_at=now, expires_at=now + timedelta(hours=24),
+    )
+    contact = Contact(wa_id="573001112233", profile_name="Nombre muy largo " * 10)
+    png = render_payment_receipt(payment, contact)
+    assert png.startswith(b"\x89PNG")

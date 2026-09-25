@@ -89,6 +89,15 @@ class WhatsAppClient:
             },
         )
 
+    async def send_image_by_media_id(self, to: str, media_id: str, caption: str | None = None) -> dict:
+        image: dict = {"id": media_id}
+        if caption:
+            image["caption"] = caption
+        return await self._post(
+            "messages",
+            json={"messaging_product": "whatsapp", "to": to, "type": "image", "image": image},
+        )
+
     async def upload_media(self, file_bytes: bytes, filename: str, mime_type: str) -> str:
         """Sube un archivo y devuelve el media_id (válido ~30 días) para reusar en envíos."""
         files = {"file": (filename, file_bytes, mime_type)}
