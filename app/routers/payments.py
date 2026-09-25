@@ -22,7 +22,17 @@ async def receive_wompi_event(request: Request, session: AsyncSession = Depends(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid JSON")
 
     if not payment_service.verify_event_checksum(event, settings.wompi_events_secret):
-        logger.warning("wompi_invalid_checksum")
+        transaction = (event.get("data") or {}).get("transaction") or {}
+        logger.warning(
+            "wompi_invalid_checksum",
+            wompi_event=event.get("event"),
+            environment=event.get("environment"),
+            transaction_id=transaction.get("id"),
+            transaction_status=transaction.get("status"),
+            payment_link_id=transaction.get("payment_link_id"),
+            properties=(event.get("signature") or {}).get("properties"),
+            secret_environment=settings.wompi_events_secret.split("_", 1)[0] or "missing",
+        )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid checksum")
 
     try:
