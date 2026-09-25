@@ -4,16 +4,29 @@ MENU_TRIGGER_WORDS = {"menu", "menú", "hola", "inicio", "start"}
 
 MAIN_MENU_SECTIONS = [
     {
-        "title": "Praxis English School",
+        "title": "Información y matrícula",
         "rows": [
             {"id": "menu_cursos", "title": "📚 Cursos y niveles", "description": "Conoce nuestros programas"},
-            {"id": "menu_horarios", "title": "🕒 Horarios y precios", "description": "Consulta disponibilidad"},
-            {"id": "menu_inscripcion", "title": "📝 Quiero inscribirme", "description": "Deja tus datos, te contactamos"},
-            {"id": "menu_pagar_cuota", "title": "💳 Pagar cuota", "description": "Paga en línea con Wompi"},
-            {"id": "menu_documentos", "title": "📄 Solicitar documentos", "description": "Brochure, temarios, etc."},
-            {"id": "menu_asesor", "title": "🙋 Hablar con un asesor", "description": "Atención humana"},
+            {"id": "menu_horarios", "title": "🕒 Horarios", "description": "Horarios de clases disponibles"},
+            {"id": "menu_precios", "title": "💲 Precios y documentos", "description": "Precios y material informativo"},
         ],
-    }
+    },
+    {
+        "title": "Ya soy estudiante",
+        "rows": [
+            {"id": "menu_consulta", "title": "🙋 Tengo una consulta", "description": "Soporte para estudiantes actuales"},
+        ],
+    },
+    {
+        "title": "Pagos y cartera",
+        "rows": [
+            {"id": "menu_pagar_cuota", "title": "💰 Pagar cuota en línea", "description": "Paga ya con Nequi, PSE o tarjeta"},
+            {"id": "menu_pagos", "title": "💳 Pagos", "description": "Consulta sobre pagos"},
+            {"id": "menu_cartera", "title": "📋 Cartera", "description": "Aclaraciones de cartera"},
+            {"id": "menu_paz_salvo", "title": "✅ Paz y salvo", "description": "Solicitar paz y salvo"},
+            {"id": "menu_recibo", "title": "🧾 Subir recibo de pago", "description": "Envía tu comprobante de pago"},
+        ],
+    },
 ]
 
 
