@@ -60,6 +60,24 @@ class WhatsAppClient:
             },
         )
 
+    async def send_cta_url(
+        self, to: str, header: str, body: str, button_text: str, url: str, footer: str | None = None
+    ) -> dict:
+        """Mensaje con botón que abre `url` en el navegador interno de WhatsApp.
+        Límites de Meta: header 60, body 1024, footer 60 y button_text 20 caracteres."""
+        interactive: dict = {
+            "type": "cta_url",
+            "header": {"type": "text", "text": header},
+            "body": {"text": body},
+            "action": {"name": "cta_url", "parameters": {"display_text": button_text, "url": url}},
+        }
+        if footer:
+            interactive["footer"] = {"text": footer}
+        return await self._post(
+            "messages",
+            json={"messaging_product": "whatsapp", "to": to, "type": "interactive", "interactive": interactive},
+        )
+
     async def send_document_by_media_id(self, to: str, media_id: str, filename: str, caption: str | None = None) -> dict:
         return await self._post(
             "messages",

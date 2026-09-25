@@ -12,12 +12,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Contact, Conversation
 from app.config import get_settings
+from app.logging_config import get_logger
 from app.services import conversation_service, document_service, lead_service, payment_service
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
 from app.wompi.client import WompiClient
 
 settings = get_settings()
+logger = get_logger(__name__)
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -195,12 +197,24 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
             )
         except payment_service.PaymentValidationError as exc:
             return {"error": "invalid_data", "detail": str(exc)}
-        return {
-            "status": "link_created",
-            "payment_url": payment.payment_url,
-            "reference": payment.reference,
-            "expires_at": payment.expires_at.isoformat(),
-        }
+        try:
+            await payment_service.send_payment_button(
+                ctx.session, ctx.whatsapp_client, payment, ctx.contact.wa_id, ctx.conversation
+            )
+            return {
+                "status": "payment_button_sent",
+                "reference": payment.reference,
+                "expires_at": payment.expires_at.isoformat(),
+            }
+        except Exception:
+            # Si Meta rechaza el botón, Claude envía el link como texto.
+            logger.exception("payment_button_failed", reference=payment.reference)
+            return {
+                "status": "link_created",
+                "payment_url": payment.payment_url,
+                "reference": payment.reference,
+                "expires_at": payment.expires_at.isoformat(),
+            }
 
     if name == "get_payment_status":
         payments = await payment_service.list_contact_payments(ctx.session, ctx.contact)

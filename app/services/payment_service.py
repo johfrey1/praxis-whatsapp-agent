@@ -228,9 +228,49 @@ async def process_wompi_event(session: AsyncSession, wompi_client: WompiClient, 
     return payment
 
 
+async def send_payment_button(
+    session: AsyncSession,
+    whatsapp_client: WhatsAppClient,
+    payment: PaymentRequest,
+    to_wa_id: str,
+    conversation: Conversation | None,
+) -> None:
+    """Envía el link de Wompi como botón: se abre en una ventana dentro de WhatsApp."""
+    body = (
+        f"Contrato {payment.contract_number} · Cuenta {payment.account_number}\n"
+        "Toca el botón, escribe el valor de tu cuota y elige cómo pagar "
+        "(Nequi, PSE, tarjeta, Bancolombia, Daviplata)."
+    )
+    footer = f"Ref {payment.reference} · válido hasta {_bogota(payment.expires_at).strftime('%d/%m %I:%M %p')}"
+    await whatsapp_client.send_cta_url(
+        to=to_wa_id,
+        header="💳 Pago de cuota",
+        body=body,
+        button_text="Pagar cuota",
+        url=payment.payment_url,
+        footer=footer,
+    )
+    if conversation is not None:
+        await conversation_service.record_message(
+            session,
+            conversation,
+            direction=MessageDirection.outbound,
+            message_type=MessageType.interactive,
+            content=f"{body}\n[Botón Pagar cuota: {payment.payment_url}]",
+        )
+
+
+def _bogota(value: datetime) -> datetime:
+    return value.astimezone(timezone(timedelta(hours=-5)))
+
+
+def _link_still_valid(payment: PaymentRequest) -> bool:
+    return payment.expires_at > datetime.now(timezone.utc)
+
+
 def _result_message(payment: PaymentRequest) -> str:
     if payment.status == PaymentStatus.approved:
-        paid_at = payment.paid_at.astimezone(timezone(timedelta(hours=-5))) if payment.paid_at else None
+        paid_at = _bogota(payment.paid_at) if payment.paid_at else None
         return (
             "✅ ¡Pago recibido!\n"
             f"Cuota del contrato {payment.contract_number} (cuenta {payment.account_number})\n"
@@ -242,8 +282,8 @@ def _result_message(payment: PaymentRequest) -> str:
             "Guarda este mensaje como comprobante."
         )
     retry_hint = (
-        f"Puedes intentarlo de nuevo con el mismo link: {payment.payment_url}"
-        if payment.expires_at > datetime.now(timezone.utc)
+        "Puedes intentarlo de nuevo con el botón de abajo."
+        if _link_still_valid(payment)
         else "Escribe *pagar cuota* para generar un link nuevo."
     )
     return (
@@ -271,6 +311,9 @@ async def notify_payment_result(
             message_type=MessageType.system,
             content=text,
         )
+
+    if payment.status != PaymentStatus.approved and _link_still_valid(payment):
+        await send_payment_button(session, whatsapp_client, payment, contact.wa_id, conversation)
 
     if payment.status == PaymentStatus.approved:
         await conversation_service.notify_staff(

@@ -127,3 +127,28 @@ def test_events_endpoint_returns_500_so_wompi_retries(client, monkeypatch) -> No
 
     monkeypatch.setattr(payment_service, "process_wompi_event", failing_process)
     assert client.post("/payments/wompi/events", json=_event()).status_code == 500
+
+
+@pytest.mark.asyncio
+async def test_send_cta_url_payload(monkeypatch) -> None:
+    from app.whatsapp.client import WhatsAppClient
+
+    captured = {}
+
+    async def fake_post(self, path, json=None, files=None, data=None):
+        captured.update(path=path, json=json)
+        return {}
+
+    monkeypatch.setattr(WhatsAppClient, "_post", fake_post)
+    await WhatsAppClient().send_cta_url(
+        to="573001112233", header="💳 Pago de cuota", body="b", button_text="Pagar cuota",
+        url="https://checkout.wompi.co/l/abc", footer="f",
+    )
+    interactive = captured["json"]["interactive"]
+    assert captured["path"] == "messages"
+    assert interactive["type"] == "cta_url"
+    assert interactive["action"] == {
+        "name": "cta_url",
+        "parameters": {"display_text": "Pagar cuota", "url": "https://checkout.wompi.co/l/abc"},
+    }
+    assert len(interactive["action"]["parameters"]["display_text"]) <= 20
