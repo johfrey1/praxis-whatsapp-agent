@@ -11,9 +11,13 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Contact, Conversation
-from app.services import conversation_service, document_service, lead_service
+from app.config import get_settings
+from app.services import conversation_service, document_service, lead_service, payment_service
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
+from app.wompi.client import WompiClient
+
+settings = get_settings()
 
 TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
@@ -83,6 +87,27 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
             "required": ["reason"],
         },
     },
+    {
+        "name": "create_installment_payment_link",
+        "description": "Genera un link de pago de Wompi para que un estudiante pague una cuota. El monto NO "
+        "se pide: el estudiante lo escribe en el link. Requiere los tres datos: cédula, número de "
+        "contrato y número de cuenta. Si devuelve invalid_data, pide de nuevo el dato indicado.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "national_id": {"type": "string", "description": "Cédula del titular del contrato"},
+                "contract_number": {"type": "string", "description": "Número de contrato"},
+                "account_number": {"type": "string", "description": "Número de cuenta"},
+            },
+            "required": ["national_id", "contract_number", "account_number"],
+        },
+    },
+    {
+        "name": "get_payment_status",
+        "description": "Consulta el estado de los últimos pagos de cuota de este usuario (pendiente, "
+        "aprobado, rechazado). Úsalo si pregunta si su pago ya se registró.",
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 
 
@@ -93,6 +118,7 @@ class ToolContext:
     conversation: Conversation
     whatsapp_client: WhatsAppClient
     strapi_client: StrapiClient
+    wompi_client: WompiClient
 
 
 def _summarize_entries(entries: list[dict], fields: list[str]) -> list[dict]:
@@ -153,5 +179,43 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
             ctx.whatsapp_client, ctx.contact, f"Conversación escalada: {tool_input.get('reason', 'sin motivo')}"
         )
         return {"status": "escalated"}
+
+    if name == "create_installment_payment_link":
+        if not settings.payments_enabled:
+            return {"error": "payments_disabled"}
+        try:
+            payment = await payment_service.create_installment_payment(
+                ctx.session,
+                ctx.wompi_client,
+                ctx.contact,
+                ctx.conversation,
+                national_id=tool_input.get("national_id", ""),
+                contract_number=tool_input.get("contract_number", ""),
+                account_number=tool_input.get("account_number", ""),
+            )
+        except payment_service.PaymentValidationError as exc:
+            return {"error": "invalid_data", "detail": str(exc)}
+        return {
+            "status": "link_created",
+            "payment_url": payment.payment_url,
+            "reference": payment.reference,
+            "expires_at": payment.expires_at.isoformat(),
+        }
+
+    if name == "get_payment_status":
+        payments = await payment_service.list_contact_payments(ctx.session, ctx.contact)
+        return {
+            "payments": [
+                {
+                    "reference": p.reference,
+                    "contract_number": p.contract_number,
+                    "status": p.status.value,
+                    "amount": payment_service.format_cop(p.amount_in_cents),
+                    "payment_url": p.payment_url if p.status.value == "pending" else None,
+                    "created_at": p.created_at.isoformat(),
+                }
+                for p in payments
+            ]
+        }
 
     return {"error": f"unknown_tool:{name}"}

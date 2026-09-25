@@ -91,6 +91,39 @@ cuando el usuario lo pida.
 curl http://localhost:8000/admin/leads -H "X-API-Key: $ADMIN_API_KEY"
 ```
 
+### 6. Pago de cuotas con Wompi
+
+Opción **💳 Pagar cuota** del menú (o escribiendo "quiero pagar mi cuota"):
+
+1. El agente pide **cédula**, **número de contrato** y **número de cuenta** y crea en Wompi un
+   link de pago de un solo uso **sin monto** (`amount_in_cents` omitido): el estudiante escribe
+   el valor de la cuota en el checkout (`https://checkout.wompi.co/l/<id>`).
+2. Wompi envía `transaction.updated` a `POST /payments/wompi/events`. Se valida el checksum
+   (`SHA256(propiedades + timestamp + WOMPI_EVENTS_SECRET)`), se consulta la transacción en
+   `GET /v1/transactions/{id}` y se guarda como evidencia en `payment_events` (payload crudo +
+   transacción verificada). El estado final queda en `payment_requests`.
+3. Si el pago queda aprobado, el estudiante recibe el comprobante por WhatsApp (valor, medio,
+   ID de transacción, referencia) y se avisa a `STAFF_NOTIFICATION_NUMBERS`. Si es rechazado,
+   se le reenvía el link para reintentar.
+
+Configuración:
+
+- Completa las variables `WOMPI_*` de `.env` (llaves del mismo ambiente que `WOMPI_ENVIRONMENT`).
+- En el dashboard de Wompi > Desarrolladores, configura la **URL de eventos**:
+  `https://wa.academiapraxis.com/payments/wompi/events` (una por ambiente, sandbox y producción).
+- Sin `WOMPI_PRIVATE_KEY` y `WOMPI_EVENTS_SECRET` la opción queda deshabilitada y el agente
+  ofrece un asesor.
+
+Consultar pagos y evidencia:
+
+```bash
+curl "http://localhost:8000/admin/payments?payment_status=approved" -H "X-API-Key: $ADMIN_API_KEY"
+curl http://localhost:8000/admin/payments/<id> -H "X-API-Key: $ADMIN_API_KEY"   # incluye eventos crudos
+```
+
+Nota: el agente no valida la cédula, el contrato ni la cuenta contra Strapi (no tiene acceso a
+contratos); los datos quedan guardados junto al pago para que el área administrativa concilie.
+
 ## Integración a producción
 
 Esta plataforma NO despliega Strapi ni el frontend desde un `docker-compose.yml` raíz único:
@@ -136,5 +169,7 @@ pytest
 - El webhook valida `X-Hub-Signature-256` con `WHATSAPP_APP_SECRET`; peticiones sin firma válida
   se rechazan con 401.
 - Los endpoints `/admin/*` requieren header `X-API-Key` (`ADMIN_API_KEY`).
+- `/payments/wompi/events` solo acepta eventos con checksum válido (`WOMPI_EVENTS_SECRET`) y el
+  estado del pago se toma de la API de Wompi, no solo del evento recibido.
 - El cliente de Strapi es de solo lectura; el agente no puede crear ni modificar contratos,
   facturas ni datos de personas. Preguntas sobre contratos/facturas se escalan a un humano.

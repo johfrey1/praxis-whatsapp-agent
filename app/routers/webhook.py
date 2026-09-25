@@ -17,6 +17,7 @@ from app.services import conversation_service
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
 from app.whatsapp.parser import parse_incoming_messages
+from app.wompi.client import WompiClient
 
 router = APIRouter()
 settings = get_settings()
@@ -55,10 +56,11 @@ async def receive_webhook(
 
     whatsapp_client = WhatsAppClient()
     strapi_client = StrapiClient()
+    wompi_client = WompiClient()
 
     for incoming in incoming_messages:
         try:
-            await _handle_incoming_message(session, whatsapp_client, strapi_client, incoming)
+            await _handle_incoming_message(session, whatsapp_client, strapi_client, wompi_client, incoming)
             await session.commit()
         except Exception:
             await session.rollback()
@@ -67,7 +69,7 @@ async def receive_webhook(
     return {"status": "ok"}
 
 
-async def _handle_incoming_message(session, whatsapp_client, strapi_client, incoming) -> None:
+async def _handle_incoming_message(session, whatsapp_client, strapi_client, wompi_client, incoming) -> None:
     contact, was_new = await conversation_service.get_or_create_contact(session, incoming.from_wa_id, incoming.profile_name)
     conversation = await conversation_service.get_or_create_active_conversation(session, contact)
 
@@ -113,6 +115,7 @@ async def _handle_incoming_message(session, whatsapp_client, strapi_client, inco
             conversation=conversation,
             whatsapp_client=whatsapp_client,
             strapi_client=strapi_client,
+            wompi_client=wompi_client,
         )
         reply_text, tool_calls = await run_agent_turn(user_text, history[:-1], tool_ctx)
 

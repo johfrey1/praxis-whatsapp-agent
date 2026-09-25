@@ -27,6 +27,14 @@ class Settings(BaseSettings):
     strapi_base_url: str
     strapi_api_token: str = ""
 
+    # Wompi (pago de cuotas)
+    wompi_environment: str = "sandbox"  # sandbox | production
+    wompi_public_key: str = ""
+    wompi_private_key: str = ""
+    wompi_events_secret: str = ""
+    wompi_payment_link_ttl_hours: int = 24
+    wompi_redirect_url: str = ""
+
     # Admin API
     admin_api_key: str
 
@@ -42,6 +50,15 @@ class Settings(BaseSettings):
     @property
     def graph_api_base_url(self) -> str:
         return f"https://graph.facebook.com/{self.whatsapp_graph_api_version}"
+
+    @property
+    def wompi_api_base_url(self) -> str:
+        host = "production" if self.wompi_environment == "production" else "sandbox"
+        return f"https://{host}.wompi.co/v1"
+
+    @property
+    def payments_enabled(self) -> bool:
+        return bool(self.wompi_private_key and self.wompi_events_secret)
 
 
 @lru_cache

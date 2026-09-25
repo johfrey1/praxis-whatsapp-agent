@@ -9,6 +9,7 @@ MAIN_MENU_SECTIONS = [
             {"id": "menu_cursos", "title": "📚 Cursos y niveles", "description": "Conoce nuestros programas"},
             {"id": "menu_horarios", "title": "🕒 Horarios y precios", "description": "Consulta disponibilidad"},
             {"id": "menu_inscripcion", "title": "📝 Quiero inscribirme", "description": "Deja tus datos, te contactamos"},
+            {"id": "menu_pagar_cuota", "title": "💳 Pagar cuota", "description": "Paga en línea con Wompi"},
             {"id": "menu_documentos", "title": "📄 Solicitar documentos", "description": "Brochure, temarios, etc."},
             {"id": "menu_asesor", "title": "🙋 Hablar con un asesor", "description": "Atención humana"},
         ],

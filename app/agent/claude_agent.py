@@ -61,7 +61,13 @@ async def run_agent_turn(
             if block.type != "tool_use":
                 continue
             logger.info("tool_call", tool=block.name, input=block.input, wa_id=tool_ctx.contact.wa_id)
-            result = await execute_tool(block.name, block.input, tool_ctx)
+            try:
+                result = await execute_tool(block.name, block.input, tool_ctx)
+            except Exception:
+                # Si una integración falla (Strapi, Wompi, Meta), Claude debe poder responder igual
+                # en vez de que el usuario se quede sin respuesta.
+                logger.exception("tool_failed", tool=block.name, wa_id=tool_ctx.contact.wa_id)
+                result = {"error": "tool_failed"}
             executed_tool_calls.append({"tool": block.name, "input": block.input, "result": result})
             tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": _stringify(result)})
 
