@@ -37,6 +37,8 @@ class Settings(BaseSettings):
     # Número(s) de servicio (E.164 sin '+', separados por coma) que reciben la imagen del
     # comprobante de cada pago aprobado
     payment_receipt_numbers: str = ""
+    # Número(s) que reciben las solicitudes de estudiantes (cédula, teléfono, correo y petición)
+    student_request_numbers: str = "573102394548"
 
     # Admin API
     admin_api_key: str
@@ -53,6 +55,10 @@ class Settings(BaseSettings):
     @property
     def receipt_numbers(self) -> list[str]:
         return [n.strip().lstrip("+") for n in self.payment_receipt_numbers.split(",") if n.strip()]
+
+    @property
+    def student_request_numbers_list(self) -> list[str]:
+        return [n.strip().lstrip("+") for n in self.student_request_numbers.split(",") if n.strip()]
 
     @property
     def graph_api_base_url(self) -> str:

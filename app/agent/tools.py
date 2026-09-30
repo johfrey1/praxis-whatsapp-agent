@@ -10,10 +10,16 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Contact, Conversation
+from app.db.models import Contact, Conversation, MessageDirection, MessageType
 from app.config import get_settings
 from app.logging_config import get_logger
-from app.services import conversation_service, document_service, lead_service, payment_service
+from app.services import (
+    conversation_service,
+    document_service,
+    lead_service,
+    payment_service,
+    student_request_service,
+)
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
 from app.wompi.client import WompiClient
@@ -81,12 +87,39 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "escalate_to_human",
-        "description": "Deriva la conversación a un asesor humano (contratos, facturas, quejas, o petición "
+        "description": "Deriva la conversación a un asesor humano (quejas fuertes, urgencias, o petición "
         "explícita de hablar con una persona). Notifica al equipo de ventas/atención.",
         "input_schema": {
             "type": "object",
             "properties": {"reason": {"type": "string", "description": "Motivo breve de la escalación"}},
             "required": ["reason"],
+        },
+    },
+    {
+        "name": "submit_student_request",
+        "description": "Envía la solicitud de un estudiante actual (consulta, pagos, cartera, paz y salvo, "
+        "recibo de pago u otra) al equipo de atención a estudiantes. Llámala SOLO cuando tengas los cuatro "
+        "datos: cédula, teléfono, correo y la petición. Si devuelve invalid_data, pide de nuevo el dato "
+        "indicado en detail.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "request_type": {
+                    "type": "string",
+                    "enum": list(student_request_service.REQUEST_TYPES),
+                    "description": "Tipo de solicitud",
+                },
+                "national_id": {"type": "string", "description": "Número de cédula del estudiante"},
+                "phone": {"type": "string", "description": "Teléfono de contacto que dio el estudiante"},
+                "email": {"type": "string", "description": "Correo electrónico del estudiante"},
+                "request": {
+                    "type": "string",
+                    "description": "La petición completa del estudiante, con todos los detalles que dio "
+                    "(contrato, cuenta, fechas, valores…)",
+                },
+                "full_name": {"type": "string", "description": "Nombre completo, si lo dio"},
+            },
+            "required": ["request_type", "national_id", "phone", "email", "request"],
         },
     },
     {
@@ -187,6 +220,25 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
             ctx.whatsapp_client, ctx.contact, f"Conversación escalada: {tool_input.get('reason', 'sin motivo')}"
         )
         return {"status": "escalated"}
+
+    if name == "submit_student_request":
+        try:
+            request = student_request_service.build_request(tool_input)
+        except student_request_service.StudentRequestValidationError as exc:
+            return {"error": "invalid_data", "detail": str(exc)}
+        try:
+            text = await student_request_service.send_request(ctx.whatsapp_client, request, ctx.contact)
+        except Exception:
+            logger.exception("student_request_failed", wa_id=ctx.contact.wa_id)
+            return {"error": "tool_failed"}
+        await conversation_service.record_message(
+            ctx.session,
+            ctx.conversation,
+            direction=MessageDirection.outbound,
+            message_type=MessageType.system,
+            content=f"[Solicitud enviada a atención a estudiantes]\n{text}",
+        )
+        return {"status": "request_sent"}
 
     if name == "create_installment_payment_link":
         if not settings.payments_enabled:
