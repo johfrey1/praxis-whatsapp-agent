@@ -17,7 +17,7 @@ from app.security import verify_webhook_signature
 from app.services import conversation_service
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
-from app.whatsapp.parser import parse_incoming_messages
+from app.whatsapp.parser import parse_failed_statuses, parse_incoming_messages
 from app.wompi.client import WompiClient
 
 router = APIRouter()
@@ -50,6 +50,16 @@ async def receive_webhook(
     raw_body = await request.body()
     verify_webhook_signature(raw_body, x_hub_signature_256)
     payload = json.loads(raw_body)
+
+    for failed in parse_failed_statuses(payload):
+        logger.warning(
+            "whatsapp_delivery_failed",
+            wa_message_id=failed.wa_message_id,
+            recipient_id=failed.recipient_id,
+            error_code=failed.error_code,
+            error_title=failed.error_title,
+            error_details=failed.error_details,
+        )
 
     incoming_messages = parse_incoming_messages(payload)
     if not incoming_messages:

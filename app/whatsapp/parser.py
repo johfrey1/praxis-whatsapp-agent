@@ -60,3 +60,37 @@ def parse_incoming_messages(payload: dict) -> list[IncomingMessage]:
                 results.append(incoming)
 
     return results
+
+
+@dataclass
+class FailedStatus:
+    wa_message_id: str
+    recipient_id: str
+    error_code: int | None
+    error_title: str | None
+    error_details: str | None
+
+
+def parse_failed_statuses(payload: dict) -> list[FailedStatus]:
+    """Envíos que Meta aceptó (HTTP 200) pero no pudo entregar, p. ej. 131047: el destinatario
+    no ha escrito en las últimas 24 h y el mensaje no es una plantilla."""
+    envelope = WebhookEnvelope.model_validate(payload)
+    results: list[FailedStatus] = []
+    for entry in envelope.entry:
+        for change in entry.changes:
+            if not change.value:
+                continue
+            for st in change.value.statuses:
+                if st.get("status") != "failed":
+                    continue
+                error = (st.get("errors") or [{}])[0]
+                results.append(
+                    FailedStatus(
+                        wa_message_id=st.get("id", ""),
+                        recipient_id=st.get("recipient_id", ""),
+                        error_code=error.get("code"),
+                        error_title=error.get("title"),
+                        error_details=(error.get("error_data") or {}).get("details"),
+                    )
+                )
+    return results
