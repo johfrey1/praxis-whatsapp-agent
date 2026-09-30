@@ -41,6 +41,22 @@ def test_build_request_rejects_invalid(field: str, value: str) -> None:
         srs.build_request({**VALID, field: value})
 
 
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        ("3102394548", "573102394548"),
+        ("+57 310 239 4548", "573102394548"),
+        ("6044445566", "576044445566"),
+        ("+1 305 555 0100", "13055550100"),
+        ("32324434433", None),  # 11 dígitos: no es celular colombiano ni Bélgica
+        ("2343v", None),
+        ("57310239454", None),
+    ],
+)
+def test_normalize_phone(raw: str, expected: str | None) -> None:
+    assert srs.normalize_phone(raw) == expected
+
+
 def test_unknown_request_type_falls_back_to_otro() -> None:
     assert srs.build_request({**VALID, "request_type": "xyz"}).request_type == "otro"
 

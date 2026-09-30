@@ -44,16 +44,32 @@ def _digits(value: str) -> str:
     return re.sub(r"\D", "", value or "")
 
 
+def normalize_phone(raw: str) -> str | None:
+    """Teléfono en formato E.164 sin '+', o None si no es válido.
+
+    Acepta celular (3xx) o fijo (60x) colombiano de 10 dígitos, con o sin 57 adelante, y números
+    de otros países solo si vienen con '+'. Un "3xx" con dígitos de más se rechaza en vez de
+    confundirlo con un indicativo extranjero (p. ej. 32324434433 no es Bélgica)."""
+    digits = _digits(raw)
+    national = digits[2:] if len(digits) == 12 and digits.startswith("57") else digits
+    if len(national) == 10 and national.startswith(("3", "60")):
+        return f"57{national}"
+    if (raw or "").strip().startswith("+") and not digits.startswith("57") and 8 <= len(digits) <= 15:
+        return digits
+    return None
+
+
 def build_request(data: dict) -> StudentRequest:
     national_id = _digits(data.get("national_id", ""))
     if not 5 <= len(national_id) <= 12:
         raise StudentRequestValidationError("national_id: la cédula debe tener entre 5 y 12 dígitos")
 
-    phone = _digits(data.get("phone", ""))
-    if len(phone) == 10 and phone.startswith("3"):
-        phone = f"57{phone}"  # celular colombiano sin indicativo
-    if not 10 <= len(phone) <= 15:
-        raise StudentRequestValidationError("phone: el teléfono no es válido")
+    phone = normalize_phone(data.get("phone", ""))
+    if phone is None:
+        raise StudentRequestValidationError(
+            "phone: el teléfono no es válido (celular colombiano de 10 dígitos que empiece por 3, "
+            "fijo de 10 dígitos que empiece por 60, o número internacional con +indicativo)"
+        )
 
     email = (data.get("email") or "").strip()
     if not is_valid_email(email):
