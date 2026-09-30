@@ -64,9 +64,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     },
     {
         "name": "save_lead",
-        "description": "Guarda los datos de contacto de un prospecto interesado en inscribirse. Llama a esta "
-        "herramienta en cuanto tengas al menos nombre y (teléfono o email); puedes volver a llamarla "
-        "más adelante en la misma conversación para completar datos adicionales.",
+        "description": "Guarda un prospecto y avisa de inmediato a los asesores para que lo contacten. "
+        "Llámala cuando tengas nombre completo y correo. program_interest = lo que quiere lograr con el "
+        "inglés, en sus palabras. Devuelve invalid_email si el correo no es válido.",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -163,15 +163,21 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
         return {"status": "sent", "title": document.title}
 
     if name == "save_lead":
+        email = (tool_input.get("email") or "").strip()
+        if email and not lead_service.is_valid_email(email):
+            return {"error": "invalid_email"}
         lead = await lead_service.create_lead(
             ctx.session,
             contact_id=ctx.contact.id,
             full_name=tool_input.get("full_name"),
             phone=tool_input.get("phone") or ctx.contact.wa_id,
-            email=tool_input.get("email"),
+            email=email or None,
             program_interest=tool_input.get("program_interest"),
             preferred_schedule=tool_input.get("preferred_schedule"),
             comments=tool_input.get("comments"),
+        )
+        await conversation_service.notify_staff(
+            ctx.whatsapp_client, ctx.contact, lead_service.format_lead_notification(lead)
         )
         return {"status": "saved", "lead_id": str(lead.id)}
 

@@ -39,7 +39,10 @@ async def run_agent_turn(
     messages = _history_to_messages(history)
     messages.append({"role": "user", "content": user_text})
 
-    system_prompt = f"{SYSTEM_PROMPT}\n\n{contact_new_context(tool_ctx.contact.is_new)}"
+    system_prompt = (
+        f"{SYSTEM_PROMPT}\n\n"
+        f"{contact_new_context(tool_ctx.contact.is_new, tool_ctx.contact.profile_name)}"
+    )
     executed_tool_calls: list[dict] = []
 
     for _ in range(_MAX_TOOL_ITERATIONS):

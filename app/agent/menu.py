@@ -1,6 +1,7 @@
 """Menú interactivo principal (WhatsApp interactive list)."""
 
-MENU_TRIGGER_WORDS = {"menu", "menú", "hola", "inicio", "start"}
+# "hola" ya no abre el menú: los contactos nuevos reciben la bienvenida y los demás conversan.
+MENU_TRIGGER_WORDS = {"menu", "menú", "inicio", "start", "opciones"}
 
 MAIN_MENU_SECTIONS = [
     {

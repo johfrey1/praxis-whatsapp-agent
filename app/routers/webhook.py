@@ -8,6 +8,7 @@ from fastapi import Depends
 from app.agent.claude_agent import run_agent_turn
 from app.agent.menu import MEDIA_FALLBACK_TEXT, MENU_TRIGGER_WORDS, send_main_menu
 from app.agent.tools import ToolContext
+from app.agent.welcome import PROSPECT_MENU_IDS, build_welcome, is_plain_greeting
 from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import MessageDirection, MessageType
@@ -93,9 +94,23 @@ async def _handle_incoming_message(session, whatsapp_client, strapi_client, womp
         await conversation_service.notify_staff(whatsapp_client, contact, "Nuevo contacto en WhatsApp")
 
     user_text = incoming.text or ""
-    should_send_menu = was_new or user_text.strip().lower() in MENU_TRIGGER_WORDS
+    should_send_menu = not was_new and user_text.strip().lower() in MENU_TRIGGER_WORDS
+    if incoming.interactive_reply_id in PROSPECT_MENU_IDS:
+        # Eligió Cursos/Horarios/Precios: es un prospecto, que el agente no vuelva a preguntarlo.
+        user_text = f"{user_text} (eligió esta opción del menú: quiere aprender inglés en Praxis)"
 
-    if not user_text and incoming.message_type in MEDIA_FALLBACK_TEXT:
+    if was_new and is_plain_greeting(user_text):
+        # Bienvenida fija y personalizada: instantánea y sin menú duplicado.
+        welcome_text = build_welcome(contact.profile_name)
+        await whatsapp_client.send_text(to=contact.wa_id, body=welcome_text)
+        await conversation_service.record_message(
+            session,
+            conversation,
+            direction=MessageDirection.outbound,
+            message_type=MessageType.text,
+            content=welcome_text,
+        )
+    elif not user_text and incoming.message_type in MEDIA_FALLBACK_TEXT:
         # Audio/imagen/documento SIN texto/caption: antes se ignoraba en silencio.
         # Respondemos con un mensaje claro en vez de dejar al usuario sin respuesta.
         fallback_text = MEDIA_FALLBACK_TEXT[incoming.message_type]
