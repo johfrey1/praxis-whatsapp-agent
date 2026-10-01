@@ -57,15 +57,21 @@ class WhatsAppClient:
 
     async def send_staff_message(self, to: str, text: str) -> dict:
         """Aviso interno al personal. Con `staff_template_name` configurada usa la plantilla (llega
-        fuera de la ventana de 24 h); si no, texto libre."""
+        fuera de la ventana de 24 h) y, si esta falla, cae a texto libre; sin ella, texto libre."""
         if not settings.staff_template_name:
             return await self.send_text(to=to, body=text)
         # Meta rechaza variables con saltos de línea, tabulaciones o 4+ espacios seguidos.
         flat = " | ".join(line.strip() for line in text.splitlines() if line.strip())
         flat = " ".join(flat.split())[:1000]
-        return await self.send_template(
-            to=to, name=settings.staff_template_name, language=settings.staff_template_language, body_params=[flat]
-        )
+        try:
+            return await self.send_template(
+                to=to, name=settings.staff_template_name, language=settings.staff_template_language, body_params=[flat]
+            )
+        except Exception:
+            # Plantilla no aprobada/inexistente (132001) u otro fallo: mejor texto libre (llega si el
+            # destinatario escribió en las últimas 24 h) que perder el aviso.
+            logger.warning("staff_template_failed_falling_back_to_text", template=settings.staff_template_name, to=to)
+            return await self.send_text(to=to, body=text)
 
     async def send_interactive_list(self, to: str, header: str, body: str, button_text: str, sections: list[dict]) -> dict:
         """sections: [{"title": str, "rows": [{"id": str, "title": str, "description": str}]}]"""

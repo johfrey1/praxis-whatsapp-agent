@@ -35,3 +35,20 @@ async def test_staff_message_uses_template_with_flattened_param(monkeypatch) -> 
     text = payload["template"]["components"][0]["parameters"][0]["text"]
     assert "\n" not in text and "  " not in text
     assert text == "🔔 Nuevo lead | Contacto: Ana | (573001112233)"
+
+
+class FailingTemplateClient(RecordingClient):
+    async def _post(self, path, json=None, files=None, data=None):
+        self.payloads.append(json)
+        if json["type"] == "template":
+            raise RuntimeError("132001 template does not exist")
+        return {}
+
+
+@pytest.mark.asyncio
+async def test_staff_message_falls_back_to_text_when_template_fails(monkeypatch) -> None:
+    monkeypatch.setattr(wa_client.settings, "staff_template_name", "aviso_equipo")
+    c = FailingTemplateClient()
+    await c.send_staff_message("573001112233", "🔔 Nuevo lead\nContacto: Ana")
+    assert [p["type"] for p in c.payloads] == ["template", "text"]
+    assert c.payloads[1]["text"]["body"] == "🔔 Nuevo lead\nContacto: Ana"
