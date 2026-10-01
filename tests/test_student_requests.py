@@ -69,6 +69,9 @@ class FakeWhatsApp:
         self.sent.append((to, body))
         return {}
 
+    async def send_staff_message(self, to: str, text: str) -> dict:
+        return await self.send_text(to=to, body=text)
+
 
 @pytest.mark.asyncio
 async def test_send_request_goes_to_student_request_number(monkeypatch) -> None:

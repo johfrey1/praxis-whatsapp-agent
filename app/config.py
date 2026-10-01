@@ -19,6 +19,11 @@ class Settings(BaseSettings):
     whatsapp_verify_token: str
     whatsapp_graph_api_version: str = "v21.0"
     staff_notification_numbers: str = ""
+    # Plantilla aprobada (Utility, 1 variable {{1}} en el cuerpo) para avisos internos. Meta solo
+    # permite texto libre dentro de las 24 h posteriores a que el destinatario escribió; la plantilla
+    # llega siempre. Vacía = se envía texto libre (comportamiento anterior).
+    staff_template_name: str = ""
+    staff_template_language: str = "es"
 
     # Database
     database_url: str

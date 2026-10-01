@@ -108,7 +108,7 @@ async def send_request(whatsapp_client: WhatsAppClient, req: StudentRequest, con
     delivered = 0
     for number in numbers:
         try:
-            response = await whatsapp_client.send_text(to=number, body=text)
+            response = await whatsapp_client.send_staff_message(to=number, text=text)
             delivered += 1
             wa_message_id = ((response or {}).get("messages") or [{}])[0].get("id")
             logger.info("student_request_accepted", to=number, wa_message_id=wa_message_id)

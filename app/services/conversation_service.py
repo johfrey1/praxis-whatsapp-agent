@@ -96,6 +96,6 @@ async def notify_staff(whatsapp_client: WhatsAppClient, contact: Contact, reason
     text = f"🔔 {reason}\nContacto: {name} ({contact.wa_id})"
     for staff_number in settings.staff_numbers:
         try:
-            await whatsapp_client.send_text(to=staff_number, body=text)
+            await whatsapp_client.send_staff_message(to=staff_number, text=text)
         except Exception:
             logger.exception("staff_notification_failed", staff_number=staff_number)
