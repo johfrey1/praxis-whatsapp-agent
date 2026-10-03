@@ -27,14 +27,18 @@ CONTACT = SimpleNamespace(id=uuid.uuid4(), wa_id="573012042870", profile_name="J
 
 
 class _Result:
-    def __init__(self, value):
+    def __init__(self, value, items=None):
         self._value = value
+        self._items = items or []
 
     def scalars(self):
         return self
 
     def first(self):
         return self._value
+
+    def all(self):
+        return self._items
 
 
 class FakeSession:
@@ -337,3 +341,121 @@ def test_manual_receipt_images_render_both_states() -> None:
     payment.reviewed_at = payment.proof_received_at = __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
     for confirmed in (False, True):
         assert render_manual_receipt(payment, CONTACT, confirmed=confirmed).startswith(b"\x89PNG")
+
+
+# --- aprobación por WhatsApp del gestor ---
+
+MANAGER = "573102394548"
+
+
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        ("aprobar PRX-B0123456789", ("approve", "PRX-B0123456789", None)),
+        ("  Confirmar prx-babcdef0123  ", ("approve", "PRX-BABCDEF0123", None)),
+        ("RECHAZAR PRX-B0123456789 el valor no coincide", ("reject", "PRX-B0123456789", "el valor no coincide")),
+        ("rechazar PRX-B0123456789: sin fondos", ("reject", "PRX-B0123456789", "sin fondos")),
+        ("pendientes", ("list", None, None)),
+        ("Pendientes.", ("list", None, None)),
+    ],
+)
+def test_parse_manager_command(text, expected) -> None:
+    assert manual_payment_service.parse_manager_command(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text", [None, "", "hola", "aprobar", "aprobar PRX-B12", "aprobar PRX-1234", "quiero aprobar PRX-B0123456789", "aprobar pagos pendientes"]
+)
+def test_parse_manager_command_ignores_normal_messages(text) -> None:
+    assert manual_payment_service.parse_manager_command(text) is None
+
+
+class CommandSession(FakeSession):
+    def __init__(self, payment=None, pending=None):
+        super().__init__(existing=payment)
+        self.pending = pending or []
+
+    async def execute(self, _stmt):
+        return _Result(self.existing, self.pending)
+
+    async def get(self, model, key):
+        return CONTACT
+
+
+@pytest.mark.asyncio
+async def test_only_manager_numbers_can_run_commands() -> None:
+    payment = _awaiting()
+    payment.status = "pending_approval"
+    for sender in ("573012042870", "573999999999"):
+        reply = await manual_payment_service.handle_manager_command(
+            CommandSession(payment), FakeWhatsApp(), sender, "aprobar PRX-B0123456789"
+        )
+        assert reply is None
+    assert payment.status == "pending_approval"
+
+
+@pytest.mark.asyncio
+async def test_manager_approves_by_whatsapp() -> None:
+    payment, wa = _awaiting(), FakeWhatsApp()
+    payment.status = "pending_approval"
+    reply = await manual_payment_service.handle_manager_command(
+        CommandSession(payment), wa, MANAGER, "aprobar PRX-B0123456789"
+    )
+    assert payment.status == "approved"
+    assert "quedó confirmado" in reply
+    assert any("confirmado" in body for _, body in wa.texts)
+
+
+@pytest.mark.asyncio
+async def test_manager_rejects_with_reason_by_whatsapp() -> None:
+    payment, wa = _awaiting(), FakeWhatsApp()
+    payment.status = "pending_approval"
+    reply = await manual_payment_service.handle_manager_command(
+        CommandSession(payment), wa, MANAGER, "rechazar PRX-B0123456789 captura ilegible"
+    )
+    assert payment.status == "rejected" and "rechazado" in reply
+    assert "captura ilegible" in wa.texts[0][1]
+
+
+@pytest.mark.asyncio
+async def test_manager_gets_clear_answers_for_unknown_or_closed_payments() -> None:
+    unknown = await manual_payment_service.handle_manager_command(
+        CommandSession(None), FakeWhatsApp(), MANAGER, "aprobar PRX-B0123456789"
+    )
+    assert "No encontré" in unknown
+    done = _awaiting()
+    done.status = "approved"
+    closed = await manual_payment_service.handle_manager_command(
+        CommandSession(done), FakeWhatsApp(), MANAGER, "aprobar PRX-B0123456789"
+    )
+    assert "ya no está pendiente" in closed
+
+
+@pytest.mark.asyncio
+async def test_manager_lists_pending_payments() -> None:
+    empty = await manual_payment_service.handle_manager_command(CommandSession(), FakeWhatsApp(), MANAGER, "pendientes")
+    assert "No hay pagos pendientes" in empty
+    pending = _awaiting()
+    pending.status = "pending_approval"
+    listed = await manual_payment_service.handle_manager_command(
+        CommandSession(pending=[pending]), FakeWhatsApp(), MANAGER, "pendientes"
+    )
+    assert "PRX-B123" in listed and "Ana Pérez" in listed
+
+
+@pytest.mark.asyncio
+async def test_forwarded_notice_tells_the_manager_how_to_answer() -> None:
+    payment, wa = _awaiting(), FakeWhatsApp()
+    await manual_payment_service.receive_proof(FakeSession(), wa, payment, CONTACT, "m")
+    assert "aprobar PRX-B123" in wa.staff[0][1] and "rechazar PRX-B123" in wa.staff[0][1]
+
+
+@pytest.mark.asyncio
+async def test_generated_references_are_understood_by_the_command_parser() -> None:
+    for _ in range(20):
+        payment = await breb_start("breb")
+        assert manual_payment_service.parse_manager_command(f"aprobar {payment.reference}") == (
+            "approve",
+            payment.reference,
+            None,
+        )

@@ -6,8 +6,9 @@ Flujo:
 2. El estudiante paga desde su app y envía la captura por WhatsApp. `receive_proof` la descarga,
    la guarda como evidencia, deja el pago en `pending_approval`, le envía un recibo "POR CONFIRMAR"
    y reenvía la captura al gestor de estudiantes.
-3. Una persona aprueba o rechaza (`review`); el estudiante recibe el resultado y, si se aprueba, el
-   recibo "CONFIRMADO" (que también va al número de servicio).
+3. Una persona aprueba o rechaza (`review`), por la API de administración o respondiendo por
+   WhatsApp desde un número del gestor (`handle_manager_command`); el estudiante recibe el resultado
+   y, si se aprueba, el recibo "CONFIRMADO" (que también va al número de servicio).
 """
 
 import mimetypes
@@ -43,6 +44,23 @@ _PROOF_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 
 class ManualPaymentError(ValueError):
     pass
+
+
+_COMMAND_RE = re.compile(r"^\s*(aprobar|confirmar|rechazar)\s+(PRX-B[0-9A-F]{10})\b[\s:,.-]*(.*)$", re.IGNORECASE | re.DOTALL)
+_LIST_RE = re.compile(r"^\s*pendientes\s*[.!]?\s*$", re.IGNORECASE)
+
+
+def parse_manager_command(text: str | None) -> tuple[str, str | None, str | None] | None:
+    """('approve'|'reject'|'list', referencia, motivo) o None si el texto no es un comando."""
+    if not text:
+        return None
+    if _LIST_RE.match(text):
+        return "list", None, None
+    match = _COMMAND_RE.match(text)
+    if not match:
+        return None
+    action = "reject" if match.group(1).lower() == "rechazar" else "approve"
+    return action, match.group(2).upper(), match.group(3).strip() or None
 
 
 def destination(method: str) -> str:
@@ -225,6 +243,7 @@ async def _forward_to_manager(
         logger.error("no_student_manager_numbers_configured", reference=payment.reference)
         return
     summary = format_notification(payment, contact, status_line="Pago en espera de aprobación")
+    summary += f"\nResponde: aprobar {payment.reference} / rechazar {payment.reference} motivo"
     try:
         media_id = await whatsapp_client.upload_media(
             data, f"comprobante-{payment.reference}{_extension(mime_type)}", mime_type
@@ -348,3 +367,46 @@ async def review(
                 except Exception:
                     logger.exception("manual_requirement_send_failed", reference=payment.reference, to=number)
     return payment
+
+
+async def handle_manager_command(
+    session: AsyncSession, whatsapp_client: WhatsAppClient, wa_id: str, text: str | None
+) -> str | None:
+    """Aprobar/rechazar pagos respondiendo por WhatsApp. Devuelve la respuesta para el gestor, o None
+    si el mensaje no es un comando o no viene de un número del gestor (entonces sigue el flujo normal)."""
+    if wa_id not in settings.student_manager_numbers_list:
+        return None
+    command = parse_manager_command(text)
+    if command is None:
+        return None
+    action, reference, note = command
+
+    if action == "list":
+        result = await session.execute(
+            select(ManualPayment)
+            .where(ManualPayment.status == PENDING_APPROVAL)
+            .order_by(ManualPayment.proof_received_at.asc())
+            .limit(10)
+        )
+        pending = list(result.scalars().all())
+        if not pending:
+            return "No hay pagos pendientes de aprobación."
+        lines = [
+            f"{p.reference}: {p.student_name or p.national_id}, {CONCEPTS.get(p.concept, p.concept).lower()}, "
+            f"{METHODS.get(p.method, p.method)}"
+            for p in pending
+        ]
+        return "Pagos pendientes:\n" + "\n".join(lines) + "\nResponde: aprobar REFERENCIA o rechazar REFERENCIA motivo"
+
+    result = await session.execute(select(ManualPayment).where(ManualPayment.reference == reference))
+    payment = result.scalars().first()
+    contact = await session.get(Contact, payment.contact_id) if payment else None
+    if payment is None or contact is None:
+        return f"No encontré el pago {reference}. Revisa la referencia."
+    try:
+        await review(session, whatsapp_client, payment, contact, approve=action == "approve", note=note)
+    except ManualPaymentError:
+        return f"El pago {reference} ya no está pendiente (estado: {payment.status})."
+    logger.info("manual_payment_reviewed_by_whatsapp", reference=reference, action=action, manager=wa_id)
+    verb = "confirmado" if action == "approve" else "rechazado"
+    return f"Listo, el pago {reference} quedó {verb} y se avisó al estudiante."

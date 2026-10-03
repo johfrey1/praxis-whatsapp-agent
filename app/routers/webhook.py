@@ -130,6 +130,21 @@ async def _handle_incoming_message(session, whatsapp_client, strapi_client, womp
     except Exception:
         logger.warning("mark_as_read_failed", wa_message_id=incoming.wa_message_id)
 
+    # El gestor aprueba o rechaza pagos por transferencia respondiendo por WhatsApp.
+    manager_reply = await manual_payment_service.handle_manager_command(
+        session, whatsapp_client, contact.wa_id, incoming.text
+    )
+    if manager_reply is not None:
+        await whatsapp_client.send_text(to=contact.wa_id, body=manager_reply)
+        await conversation_service.record_message(
+            session,
+            conversation,
+            direction=MessageDirection.outbound,
+            message_type=MessageType.text,
+            content=manager_reply,
+        )
+        return
+
     if was_new:
         contact.human_notified_at = datetime.now(timezone.utc)
         await conversation_service.notify_staff(whatsapp_client, contact, "Nuevo contacto en WhatsApp")
