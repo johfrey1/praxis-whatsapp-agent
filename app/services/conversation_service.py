@@ -94,15 +94,21 @@ async def escalate_conversation(session: AsyncSession, conversation: Conversatio
     await session.flush()
 
 
-async def notify_staff(whatsapp_client: WhatsAppClient, contact: Contact, reason: str) -> None:
-    """Redirige/alerta a los asesores humanos cuando hay un contacto nuevo o una escalación."""
-    if not settings.staff_numbers:
-        logger.warning("no_staff_numbers_configured", reason=reason, wa_id=contact.wa_id)
+async def notify_staff(
+    whatsapp_client: WhatsAppClient, contact: Contact, reason: str, *, student: bool = False
+) -> None:
+    """Alerta a los asesores humanos por un contacto nuevo, un prospecto o una escalación.
+
+    Con `student=True` (estudiante ya matriculado) el aviso va solo al número de atención a
+    estudiantes (`STUDENT_REQUEST_NUMBERS`); los prospectos van a `STAFF_NOTIFICATION_NUMBERS`."""
+    numbers = settings.student_request_numbers_list if student else settings.staff_numbers
+    if not numbers:
+        logger.warning("no_notification_numbers_configured", reason=reason, wa_id=contact.wa_id, student=student)
         return
 
     name = contact.profile_name or contact.wa_id
     text = f"🔔 {reason}\nContacto: {name} ({contact.wa_id})"
-    for staff_number in settings.staff_numbers:
+    for staff_number in numbers:
         try:
             await whatsapp_client.send_staff_message(to=staff_number, text=text)
         except Exception:

@@ -91,8 +91,16 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "explícita de hablar con una persona). Notifica al equipo de ventas/atención.",
         "input_schema": {
             "type": "object",
-            "properties": {"reason": {"type": "string", "description": "Motivo breve de la escalación"}},
-            "required": ["reason"],
+            "properties": {
+                "reason": {"type": "string", "description": "Motivo breve de la escalación"},
+                "is_student": {
+                    "type": "boolean",
+                    "description": "true si la persona ya es estudiante matriculado de Praxis (MODO SERVICIO); "
+                    "false si es un prospecto o no está claro. Los estudiantes van al equipo de atención "
+                    "a estudiantes y los prospectos a los asesores.",
+                },
+            },
+            "required": ["reason", "is_student"],
         },
     },
     {
@@ -217,7 +225,10 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
     if name == "escalate_to_human":
         await conversation_service.escalate_conversation(ctx.session, ctx.conversation, ctx.contact)
         await conversation_service.notify_staff(
-            ctx.whatsapp_client, ctx.contact, f"Conversación escalada: {tool_input.get('reason', 'sin motivo')}"
+            ctx.whatsapp_client,
+            ctx.contact,
+            f"Conversación escalada: {tool_input.get('reason', 'sin motivo')}",
+            student=bool(tool_input.get("is_student")),
         )
         return {"status": "escalated"}
 

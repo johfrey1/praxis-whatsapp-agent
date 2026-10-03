@@ -365,6 +365,7 @@ async def notify_payment_result(
             contact,
             f"Pago de cuota APROBADO: {format_cop(payment.amount_in_cents)} · contrato {payment.contract_number} "
             f"· cuenta {payment.account_number} · cédula {payment.national_id} · tx {payment.wompi_transaction_id}",
+            student=True,
         )
 
 
