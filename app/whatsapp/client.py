@@ -43,8 +43,26 @@ class WhatsAppClient:
             },
         )
 
-    async def send_template(self, to: str, name: str, language: str, body_params: list[str]) -> dict:
-        components = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in body_params]}]
+    async def send_template(
+        self,
+        to: str,
+        name: str,
+        language: str,
+        body_params: list[str],
+        url_button_suffix: str | None = None,
+    ) -> dict:
+        """`url_button_suffix` es el valor de {{1}} en un botón URL dinámico de la plantilla
+        (p. ej. el id del link de pago en https://checkout.wompi.co/l/{{1}})."""
+        components: list[dict] = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in body_params]}]
+        if url_button_suffix:
+            components.append(
+                {
+                    "type": "button",
+                    "sub_type": "url",
+                    "index": "0",
+                    "parameters": [{"type": "text", "text": url_button_suffix}],
+                }
+            )
         return await self._post(
             "messages",
             json={

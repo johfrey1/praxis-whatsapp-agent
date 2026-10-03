@@ -137,6 +137,44 @@ async def create_installment_payment(
     return payment
 
 
+async def send_installment_reminder(
+    session: AsyncSession,
+    whatsapp_client: WhatsAppClient,
+    wompi_client: WompiClient,
+    contact: Contact,
+    student_name: str,
+    national_id: str,
+    contract_number: str,
+    account_number: str,
+) -> PaymentRequest:
+    """Cobro iniciado por la academia: crea el link y lo envía con la plantilla aprobada, que llega
+    aunque el estudiante no haya escrito en las últimas 24 h."""
+    conversation = await conversation_service.get_or_create_active_conversation(session, contact)
+    payment = await create_installment_payment(
+        session, wompi_client, contact, conversation, national_id, contract_number, account_number
+    )
+    first_name = (student_name or "").strip().split(" ")[0] or "estudiante"
+    await whatsapp_client.send_template(
+        to=contact.wa_id,
+        name=settings.payment_template_name,
+        language=settings.payment_template_language,
+        body_params=[first_name, payment.contract_number, payment.account_number],
+        url_button_suffix=payment.wompi_payment_link_id,
+    )
+    await conversation_service.record_message(
+        session,
+        conversation,
+        direction=MessageDirection.outbound,
+        message_type=MessageType.interactive,
+        content=(
+            f"Recordatorio de cuota (plantilla {settings.payment_template_name}) contrato "
+            f"{payment.contract_number}, cuenta {payment.account_number}\n[Botón Pagar cuota: {payment.payment_url}]"
+        ),
+    )
+    logger.info("payment_reminder_sent", reference=payment.reference, wa_id=contact.wa_id)
+    return payment
+
+
 async def list_contact_payments(session: AsyncSession, contact: Contact, limit: int = 3) -> list[PaymentRequest]:
     result = await session.execute(
         select(PaymentRequest)

@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     wompi_events_secret: str = ""
     wompi_payment_link_ttl_hours: int = 24
     wompi_redirect_url: str = ""
+    # Plantilla aprobada con botón URL "https://checkout.wompi.co/l/{{1}}" y cuerpo
+    # "Hola {{1}}, tu cuota del contrato {{2}} (cuenta {{3}})...": permite cobrar a un estudiante
+    # aunque no haya escrito en las últimas 24 h (recordatorios de cuota).
+    payment_template_name: str = "pago_cuota"
+    payment_template_language: str = "es"
     # Número(s) de servicio (E.164 sin '+', separados por coma) que reciben la imagen del
     # comprobante de cada pago aprobado
     payment_receipt_numbers: str = ""
