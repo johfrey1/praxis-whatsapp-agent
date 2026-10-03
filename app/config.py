@@ -47,6 +47,11 @@ class Settings(BaseSettings):
     # Plantilla del comprobante (cabecera IMAGE + 4 variables: valor, contrato, cédula, referencia).
     receipt_template_name: str = "comprobante_pago"
     receipt_template_language: str = "es"
+    # Valor (COP) de los trámites con costo: sábana de notas, paz y salvo y certificados.
+    service_fee_cop: int = 18000
+    # Gestor(es) de estudiantes que reciben el requerimiento ya pagado (E.164 sin '+', separados por
+    # coma). Vacío = se usa STUDENT_REQUEST_NUMBERS.
+    student_manager_numbers: str = ""
     # Número(s) de servicio (E.164 sin '+', separados por coma) que reciben la imagen del
     # comprobante de cada pago aprobado
     payment_receipt_numbers: str = ""
@@ -72,6 +77,11 @@ class Settings(BaseSettings):
     @property
     def student_request_numbers_list(self) -> list[str]:
         return [n.strip().lstrip("+") for n in self.student_request_numbers.split(",") if n.strip()]
+
+    @property
+    def student_manager_numbers_list(self) -> list[str]:
+        numbers = [n.strip().lstrip("+") for n in self.student_manager_numbers.split(",") if n.strip()]
+        return numbers or self.student_request_numbers_list
 
     @property
     def graph_api_base_url(self) -> str:

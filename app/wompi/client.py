@@ -26,7 +26,9 @@ class WompiClient:
         self._private_headers = {"Authorization": f"Bearer {settings.wompi_private_key}"}
 
     # Sin retry: reintentar un POST que hizo timeout podría crear links duplicados.
-    async def create_payment_link(self, *, name: str, description: str, sku: str, expires_at: datetime) -> dict:
+    async def create_payment_link(
+        self, *, name: str, description: str, sku: str, expires_at: datetime, amount_in_cents: int | None = None
+    ) -> dict:
         """Crea un link de un solo uso SIN amount_in_cents: el pagador escribe el valor a pagar.
         Wompi exige que `currency` y `amount_in_cents` vayan ambos o ninguno (422 si solo uno), así
         que en monto abierto no se envía `currency`."""
@@ -38,6 +40,9 @@ class WompiClient:
             "sku": sku,
             "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         }
+        if amount_in_cents is not None:
+            body["amount_in_cents"] = amount_in_cents
+            body["currency"] = "COP"
         if settings.wompi_redirect_url:
             body["redirect_url"] = settings.wompi_redirect_url
 

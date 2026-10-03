@@ -56,8 +56,27 @@ _STATUS_LABELS = {
 }
 
 
+CONCEPT_CUOTA = "cuota"
+# Trámites que el estudiante antiguo paga antes de que se genere el requerimiento.
+SERVICE_CONCEPTS = {
+    "sabana_notas": "Sábana de notas",
+    "paz_y_salvo": "Paz y salvo",
+    "certificado": "Certificado",
+}
+
+
 class PaymentValidationError(ValueError):
     pass
+
+
+def normalize_service_data(national_id: str, contract_number: str, student_name: str) -> tuple[str, str, str]:
+    """Valida cédula, contrato y nombres y apellidos del estudiante para un trámite con costo."""
+    national_id, contract_number, _ = normalize_payment_data(national_id, contract_number, "N-A")
+    student_name = re.sub(r"\s+", " ", (student_name or "").strip())
+    words = student_name.split(" ") if student_name else []
+    if len(words) < 2 or len(student_name) > 120 or not all(re.fullmatch(r"[^\W\d_]+(?:['.-][^\W\d_]+)*\.?", w) for w in words):
+        raise PaymentValidationError("Se necesitan los nombres y apellidos completos del estudiante, solo letras.")
+    return national_id, contract_number, student_name
 
 
 def normalize_payment_data(national_id: str, contract_number: str, account_number: str) -> tuple[str, str, str]:
@@ -99,6 +118,7 @@ async def create_installment_payment(
         .where(
             PaymentRequest.contact_id == contact.id,
             PaymentRequest.status == PaymentStatus.pending,
+            PaymentRequest.concept == CONCEPT_CUOTA,
             PaymentRequest.national_id == national_id,
             PaymentRequest.contract_number == contract_number,
             PaymentRequest.account_number == account_number,
@@ -134,6 +154,69 @@ async def create_installment_payment(
     session.add(payment)
     await session.flush()
     logger.info("payment_link_created", reference=reference, wa_id=contact.wa_id)
+    return payment
+
+
+async def create_service_payment(
+    session: AsyncSession,
+    wompi_client: WompiClient,
+    contact: Contact,
+    conversation: Conversation | None,
+    concept: str,
+    national_id: str,
+    contract_number: str,
+    student_name: str,
+) -> PaymentRequest:
+    """Link de Wompi de valor fijo (`service_fee_cop`) para un trámite: sábana de notas, paz y
+    salvo o certificado. El requerimiento se envía al gestor cuando Wompi confirma el pago."""
+    if concept not in SERVICE_CONCEPTS:
+        raise PaymentValidationError(f"Trámite no válido. Opciones: {', '.join(SERVICE_CONCEPTS)}.")
+    national_id, contract_number, student_name = normalize_service_data(national_id, contract_number, student_name)
+    now = datetime.now(timezone.utc)
+
+    result = await session.execute(
+        select(PaymentRequest)
+        .where(
+            PaymentRequest.contact_id == contact.id,
+            PaymentRequest.status == PaymentStatus.pending,
+            PaymentRequest.concept == concept,
+            PaymentRequest.national_id == national_id,
+            PaymentRequest.contract_number == contract_number,
+            PaymentRequest.expires_at > now + timedelta(minutes=30),
+        )
+        .order_by(PaymentRequest.created_at.desc())
+    )
+    existing = result.scalars().first()
+    if existing is not None:
+        return existing
+
+    reference = f"PRX-{secrets.token_hex(6).upper()}"
+    expires_at = now + timedelta(hours=settings.wompi_payment_link_ttl_hours)
+    label = SERVICE_CONCEPTS[concept]
+    link = await wompi_client.create_payment_link(
+        name=f"{label} Praxis - Contrato {contract_number}",
+        description=f"{label}. Contrato {contract_number}, cédula {national_id}, {student_name}. Ref {reference}",
+        sku=reference,
+        expires_at=expires_at,
+        amount_in_cents=settings.service_fee_cop * 100,
+    )
+    payment = PaymentRequest(
+        contact_id=contact.id,
+        conversation_id=conversation.id if conversation else None,
+        reference=reference,
+        national_id=national_id,
+        contract_number=contract_number,
+        account_number=None,
+        concept=concept,
+        student_name=student_name,
+        wompi_payment_link_id=link["id"],
+        payment_url=checkout_url(link["id"]),
+        status=PaymentStatus.pending,
+        expires_at=expires_at,
+    )
+    session.add(payment)
+    await session.flush()
+    logger.info("service_payment_link_created", reference=reference, concept=concept, wa_id=contact.wa_id)
     return payment
 
 
@@ -276,17 +359,26 @@ async def send_payment_button(
     conversation: Conversation | None,
 ) -> None:
     """Envía el link de Wompi como botón: se abre en una ventana dentro de WhatsApp."""
-    body = (
-        f"Contrato {payment.contract_number} · Cuenta {payment.account_number}\n"
-        "Toca el botón, escribe el valor de tu cuota y elige cómo pagar "
-        "(Nequi, PSE, tarjeta, Bancolombia, Daviplata)."
-    )
+    if payment.concept in SERVICE_CONCEPTS:
+        header = f"Pago de {SERVICE_CONCEPTS[payment.concept].lower()}"[:60]
+        body = (
+            f"Contrato {payment.contract_number} · {payment.student_name}\n"
+            f"Valor: {format_cop(settings.service_fee_cop * 100)}. Toca el botón y elige cómo pagar "
+            "(Nequi, PSE, tarjeta, Bancolombia, Daviplata)."
+        )
+    else:
+        header = "Pago de cuota"
+        body = (
+            f"Contrato {payment.contract_number} · Cuenta {payment.account_number}\n"
+            "Toca el botón, escribe el valor de tu cuota y elige cómo pagar "
+            "(Nequi, PSE, tarjeta, Bancolombia, Daviplata)."
+        )
     footer = f"Ref {payment.reference} · válido hasta {_bogota(payment.expires_at).strftime('%d/%m %I:%M %p')}"
     await whatsapp_client.send_cta_url(
         to=to_wa_id,
-        header="Pago de cuota",
+        header=header,
         body=body,
-        button_text="Pagar cuota",
+        button_text="Pagar" if payment.concept in SERVICE_CONCEPTS else "Pagar cuota",
         url=payment.payment_url,
         footer=footer,
     )
@@ -308,7 +400,41 @@ def _link_still_valid(payment: PaymentRequest) -> bool:
     return payment.expires_at > datetime.now(timezone.utc)
 
 
-def _result_message(payment: PaymentRequest) -> str:
+def format_service_requirement(payment: PaymentRequest, contact: Contact) -> str:
+    """Requerimiento ya pagado: lo recibe el gestor de estudiantes y, en copia, quien pagó."""
+    paid_at = _bogota(payment.paid_at) if payment.paid_at else None
+    return "\n".join(
+        [
+            f"Requerimiento de {SERVICE_CONCEPTS[payment.concept].lower()} (pagado)",
+            f"Estudiante: {payment.student_name}",
+            f"Cédula: {payment.national_id}",
+            f"Contrato: {payment.contract_number}",
+            f"WhatsApp: +{contact.wa_id}",
+            f"Valor pagado: {format_cop(payment.amount_in_cents)} ({payment.payment_method_type or 'medio no informado'})",
+            f"Fecha de pago: {paid_at.strftime('%d/%m/%Y %I:%M %p') if paid_at else '—'}",
+            f"Referencia: {payment.reference} · Transacción Wompi: {payment.wompi_transaction_id}",
+        ]
+    )
+
+
+def _result_message(payment: PaymentRequest, contact: Contact | None = None) -> str:
+    if payment.concept in SERVICE_CONCEPTS:
+        label = SERVICE_CONCEPTS[payment.concept].lower()
+        if payment.status == PaymentStatus.approved and contact is not None:
+            return (
+                f"Recibimos tu pago. Tu solicitud de {label} quedó registrada y el gestor de estudiantes "
+                "la va a procesar. Esta es la copia del requerimiento:\n\n"
+                f"{format_service_requirement(payment, contact)}"
+            )
+        retry_hint = (
+            "Puedes intentarlo de nuevo con el botón de abajo."
+            if _link_still_valid(payment)
+            else "Escríbeme y te genero un link nuevo."
+        )
+        return (
+            f"Tu pago de {label} no fue aprobado "
+            f"(estado: {_STATUS_LABELS.get(payment.status, payment.status.value)}). {retry_hint}"
+        )
     if payment.status == PaymentStatus.approved:
         paid_at = _bogota(payment.paid_at) if payment.paid_at else None
         return (
@@ -339,7 +465,11 @@ async def notify_payment_result(
     if contact is None:
         return
 
-    text = _result_message(payment)
+    # Primero el gestor: si falla el mensaje al estudiante, el trámite pagado no se pierde.
+    if payment.status == PaymentStatus.approved and payment.concept in SERVICE_CONCEPTS:
+        await send_requirement_to_manager(whatsapp_client, payment, contact)
+
+    text = _result_message(payment, contact)
     await whatsapp_client.send_text(to=contact.wa_id, body=text)
 
     conversation = await session.get(Conversation, payment.conversation_id) if payment.conversation_id else None
@@ -355,7 +485,7 @@ async def notify_payment_result(
     if payment.status != PaymentStatus.approved and _link_still_valid(payment):
         await send_payment_button(session, whatsapp_client, payment, contact.wa_id, conversation)
 
-    if payment.status == PaymentStatus.approved:
+    if payment.status == PaymentStatus.approved and payment.concept not in SERVICE_CONCEPTS:
         try:
             await send_receipt_image(whatsapp_client, payment, contact)
         except Exception:
@@ -367,6 +497,22 @@ async def notify_payment_result(
             f"· cuenta {payment.account_number} · cédula {payment.national_id} · tx {payment.wompi_transaction_id}",
             student=True,
         )
+
+
+async def send_requirement_to_manager(
+    whatsapp_client: WhatsAppClient, payment: PaymentRequest, contact: Contact
+) -> None:
+    """Envía el requerimiento pagado al gestor de estudiantes (el pagador ya recibió su copia)."""
+    numbers = settings.student_manager_numbers_list
+    if not numbers:
+        logger.error("no_student_manager_numbers_configured", reference=payment.reference)
+        return
+    text = format_service_requirement(payment, contact)
+    for number in numbers:
+        try:
+            await whatsapp_client.send_staff_message(to=number, text=text)
+        except Exception:
+            logger.exception("service_requirement_send_failed", reference=payment.reference, to=number)
 
 
 async def send_receipt_image(whatsapp_client: WhatsAppClient, payment: PaymentRequest, contact: Contact) -> None:

@@ -145,7 +145,11 @@ class PaymentRequest(Base):
     reference: Mapped[str] = mapped_column(String(36), unique=True)
     national_id: Mapped[str] = mapped_column(String(20), index=True)
     contract_number: Mapped[str] = mapped_column(String(40), index=True)
-    account_number: Mapped[str] = mapped_column(String(40))
+    # None en trámites con costo (sábana de notas, paz y salvo, certificados): no tienen cuenta.
+    account_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    # "cuota" o el trámite pagado: sabana_notas | paz_y_salvo | certificado.
+    concept: Mapped[str] = mapped_column(String(30), default="cuota", server_default="cuota")
+    student_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     wompi_payment_link_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     payment_url: Mapped[str] = mapped_column(String(255))
     status: Mapped[PaymentStatus] = mapped_column(

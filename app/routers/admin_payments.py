@@ -28,6 +28,8 @@ def _serialize(payment: PaymentRequest, wa_id: str) -> dict:
         "national_id": payment.national_id,
         "contract_number": payment.contract_number,
         "account_number": payment.account_number,
+        "concept": payment.concept,
+        "student_name": payment.student_name,
         "status": payment.status.value,
         "amount_in_cents": payment.amount_in_cents,
         "currency": payment.currency,

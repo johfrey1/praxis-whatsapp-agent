@@ -146,6 +146,28 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
+        "name": "create_service_payment_link",
+        "description": "Genera el link de pago (valor fijo, lo define la academia) de un trámite de un "
+        "estudiante antiguo: sábana de notas, paz y salvo o certificado. Requiere cédula, número de "
+        "contrato y nombres y apellidos completos. Cuando Wompi confirma el pago, el requerimiento le llega "
+        "al gestor de estudiantes y una copia a quien pagó. Si devuelve invalid_data, pide de nuevo el dato "
+        "indicado en detail.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "concept": {
+                    "type": "string",
+                    "enum": list(payment_service.SERVICE_CONCEPTS),
+                    "description": "sabana_notas, paz_y_salvo o certificado",
+                },
+                "national_id": {"type": "string", "description": "Cédula del estudiante"},
+                "contract_number": {"type": "string", "description": "Número de contrato"},
+                "full_name": {"type": "string", "description": "Nombres y apellidos completos del estudiante"},
+            },
+            "required": ["concept", "national_id", "contract_number", "full_name"],
+        },
+    },
+    {
         "name": "get_payment_status",
         "description": "Consulta el estado de los últimos pagos de cuota de este usuario (pendiente, "
         "aprobado, rechazado). Úsalo si pregunta si su pago ya se registró.",
@@ -285,6 +307,32 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
                 "expires_at": payment.expires_at.isoformat(),
             }
 
+    if name == "create_service_payment_link":
+        if not settings.payments_enabled:
+            return {"error": "payments_disabled"}
+        try:
+            payment = await payment_service.create_service_payment(
+                ctx.session,
+                ctx.wompi_client,
+                ctx.contact,
+                ctx.conversation,
+                concept=tool_input.get("concept", ""),
+                national_id=tool_input.get("national_id", ""),
+                contract_number=tool_input.get("contract_number", ""),
+                student_name=tool_input.get("full_name", ""),
+            )
+        except payment_service.PaymentValidationError as exc:
+            return {"error": "invalid_data", "detail": str(exc)}
+        fee = payment_service.format_cop(settings.service_fee_cop * 100)
+        try:
+            await payment_service.send_payment_button(
+                ctx.session, ctx.whatsapp_client, payment, ctx.contact.wa_id, ctx.conversation
+            )
+            return {"status": "payment_button_sent", "amount": fee, "reference": payment.reference}
+        except Exception:
+            logger.exception("payment_button_failed", reference=payment.reference)
+            return {"status": "link_created", "amount": fee, "payment_url": payment.payment_url}
+
     if name == "get_payment_status":
         payments = await payment_service.list_contact_payments(ctx.session, ctx.contact)
         return {
@@ -292,6 +340,7 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
                 {
                     "reference": p.reference,
                     "contract_number": p.contract_number,
+                    "concept": p.concept,
                     "status": p.status.value,
                     "amount": payment_service.format_cop(p.amount_in_cents),
                     "payment_url": p.payment_url if p.status.value == "pending" else None,

@@ -22,6 +22,11 @@ REQUEST_TYPES = {
     "cartera": "Cartera",
     "paz_y_salvo": "Paz y salvo",
     "recibo": "Recibo de pago",
+    "congelamiento": "Congelamiento de contrato",
+    "extension_contrato": "Extensión de contrato por fecha de caducidad",
+    "retoma": "Retoma de contrato vencido",
+    "queja_reclamo_sugerencia": "Queja, reclamo o sugerencia",
+    "reporte_datacredito": "Reporte a DataCrédito",
     "otro": "Otro",
 }
 
