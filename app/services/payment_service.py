@@ -246,7 +246,7 @@ async def send_payment_button(
     footer = f"Ref {payment.reference} · válido hasta {_bogota(payment.expires_at).strftime('%d/%m %I:%M %p')}"
     await whatsapp_client.send_cta_url(
         to=to_wa_id,
-        header="💳 Pago de cuota",
+        header="Pago de cuota",
         body=body,
         button_text="Pagar cuota",
         url=payment.payment_url,
@@ -274,7 +274,7 @@ def _result_message(payment: PaymentRequest) -> str:
     if payment.status == PaymentStatus.approved:
         paid_at = _bogota(payment.paid_at) if payment.paid_at else None
         return (
-            "✅ ¡Pago recibido!\n"
+            "Tu pago fue recibido.\n"
             f"Cuota del contrato {payment.contract_number} (cuenta {payment.account_number})\n"
             f"Valor: {format_cop(payment.amount_in_cents)}\n"
             f"Medio: {payment.payment_method_type or '—'}\n"
@@ -289,7 +289,7 @@ def _result_message(payment: PaymentRequest) -> str:
         else "Escribe *pagar cuota* para generar un link nuevo."
     )
     return (
-        f"❌ Tu pago de la cuota del contrato {payment.contract_number} no fue aprobado "
+        f"Tu pago de la cuota del contrato {payment.contract_number} no fue aprobado "
         f"(estado: {_STATUS_LABELS.get(payment.status, payment.status.value)}). {retry_hint}"
     )
 

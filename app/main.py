@@ -7,7 +7,8 @@ from app.routers import admin_documents, admin_leads, admin_payments, health, pa
 settings = get_settings()
 configure_logging(settings.log_level)
 
-app = FastAPI(title="Praxis WhatsApp Agent", version="0.1.0")
+# Sin /docs ni /openapi.json públicos: la API es interna (Meta, Wompi y panel admin).
+app = FastAPI(title="Praxis WhatsApp Agent", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
 
 app.include_router(health.router)
 app.include_router(webhook.router)

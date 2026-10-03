@@ -1,6 +1,7 @@
 from anthropic import AsyncAnthropic
 
 from app.agent.prompts import SYSTEM_PROMPT, contact_new_context
+from app.agent.text import strip_emojis
 from app.agent.tools import TOOL_DEFINITIONS, ToolContext, execute_tool
 from app.config import get_settings
 from app.db.models import Message, MessageDirection
@@ -85,7 +86,7 @@ async def run_agent_turn(
 
 def _extract_text(response) -> str:
     parts = [block.text for block in response.content if block.type == "text"]
-    return "\n".join(parts).strip() or "¿Podrías repetir tu mensaje? No logré procesarlo."
+    return strip_emojis("\n".join(parts)) or "¿Podrías repetir tu mensaje? No logré procesarlo."
 
 
 def _stringify(result: dict) -> str:

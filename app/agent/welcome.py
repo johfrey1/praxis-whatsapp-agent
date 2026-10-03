@@ -20,7 +20,7 @@ def _normalize(text: str) -> str:
 
 
 def is_plain_greeting(text: str | None) -> bool:
-    """True si el mensaje es solo un saludo ("Hola", "buenas tardes 👋", "info")."""
+    """True si el mensaje es solo un saludo ("Hola", "buenas tardes", "info")."""
     if not text:
         return True
     normalized = re.sub(r"\s+", " ", _normalize(text))
@@ -44,12 +44,10 @@ def first_name(profile_name: str | None) -> str | None:
 
 def build_welcome(profile_name: str | None) -> str:
     name = first_name(profile_name)
-    hello = f"¡Hola, {name}! 😊" if name else "¡Hola! 😊"
+    hello = f"Hola, {name}." if name else "Hola."
     return (
-        f"{hello} Qué alegría que nos escribas.\n\n"
-        "Soy Antony, de *Praxis English School*. Aquí vas a aprender inglés de verdad, paso a paso "
-        "y con profesores que te acompañan en todo tu proceso.\n\n"
-        "Cuéntame, ¿qué te gustaría lograr con el inglés? ✈️ viajar, 💼 crecer en tu trabajo, "
-        "🎓 estudiar, 🗣️ hablar con más confianza… ¡lo que sueñes!\n\n"
-        "_Si ya eres estudiante, cuéntame en qué te ayudo 🙌_"
+        f"{hello} Gracias por escribirnos. Soy Antony, de *Praxis English School*.\n\n"
+        "Cuéntame, ¿qué te gustaría lograr con el inglés? Por ejemplo viajar, crecer en tu trabajo, "
+        "estudiar o simplemente hablar con más confianza.\n\n"
+        "Y si ya eres estudiante, dime en qué te puedo ayudar."
     )

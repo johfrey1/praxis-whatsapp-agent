@@ -46,6 +46,14 @@ async def get_or_create_active_conversation(session: AsyncSession, contact: Cont
     return conversation
 
 
+async def message_already_processed(session: AsyncSession, wa_message_id: str | None) -> bool:
+    """Meta reintenta la entrega si tarda en recibir el 200; evita responder dos veces lo mismo."""
+    if not wa_message_id:
+        return False
+    result = await session.execute(select(Message.id).where(Message.wa_message_id == wa_message_id).limit(1))
+    return result.scalar_one_or_none() is not None
+
+
 async def record_message(
     session: AsyncSession,
     conversation: Conversation,

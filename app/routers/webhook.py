@@ -70,14 +70,30 @@ async def receive_webhook(
     wompi_client = WompiClient()
 
     for incoming in incoming_messages:
+        if await conversation_service.message_already_processed(session, incoming.wa_message_id):
+            logger.info("duplicate_message_ignored", wa_message_id=incoming.wa_message_id)
+            continue
         try:
             await _handle_incoming_message(session, whatsapp_client, strapi_client, wompi_client, incoming)
             await session.commit()
         except Exception:
             await session.rollback()
             logger.exception("failed_to_process_message", wa_message_id=incoming.wa_message_id)
+            await _send_failure_notice(whatsapp_client, incoming.from_wa_id)
 
     return {"status": "ok"}
+
+
+async def _send_failure_notice(whatsapp_client: WhatsAppClient, wa_id: str) -> None:
+    """Si algo falla al procesar, el usuario no debe quedarse sin respuesta."""
+    try:
+        await whatsapp_client.send_text(
+            to=wa_id,
+            body="Tuve un inconveniente para responderte. ¿Me escribes de nuevo en un momento? "
+            "Si es urgente, escribe *asesor* y te comunico con una persona.",
+        )
+    except Exception:
+        logger.warning("failure_notice_not_sent", wa_id=wa_id)
 
 
 async def _handle_incoming_message(session, whatsapp_client, strapi_client, wompi_client, incoming) -> None:

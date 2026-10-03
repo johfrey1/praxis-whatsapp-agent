@@ -4,7 +4,7 @@ from app.services.lead_service import format_lead_notification, is_valid_email
 
 
 def test_plain_greetings():
-    for text in ["Hola", "hola!!", "Buenas tardes 👋", "holaaa", "Hola buenas", "info", "  HOLA  ", None, ""]:
+    for text in ["Hola", "hola!!", "Buenas tardes", "holaaa", "Hola buenas", "info", "  HOLA  ", None, ""]:
         assert is_plain_greeting(text), text
 
 
@@ -23,10 +23,10 @@ def test_first_name():
 
 def test_welcome_is_personal_and_does_not_mention_schedules():
     text = build_welcome("Ana Gómez")
-    assert text.startswith("¡Hola, Ana!")
+    assert text.startswith("Hola, Ana.")
     assert "qué te gustaría lograr con el inglés" in text
     assert "horario" not in text.lower()
-    assert build_welcome(None).startswith("¡Hola! 😊")
+    assert build_welcome(None).startswith("Hola.")
 
 
 def test_email_validation():
