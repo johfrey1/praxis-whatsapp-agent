@@ -27,13 +27,14 @@ class WompiClient:
 
     # Sin retry: reintentar un POST que hizo timeout podría crear links duplicados.
     async def create_payment_link(self, *, name: str, description: str, sku: str, expires_at: datetime) -> dict:
-        """Crea un link de un solo uso SIN amount_in_cents: el pagador escribe el valor a pagar."""
+        """Crea un link de un solo uso SIN amount_in_cents: el pagador escribe el valor a pagar.
+        Wompi exige que `currency` y `amount_in_cents` vayan ambos o ninguno (422 si solo uno), así
+        que en monto abierto no se envía `currency`."""
         body = {
             "name": name,
             "description": description,
             "single_use": True,
             "collect_shipping": False,
-            "currency": "COP",
             "sku": sku,
             "expires_at": expires_at.strftime("%Y-%m-%dT%H:%M:%S.000Z"),
         }
