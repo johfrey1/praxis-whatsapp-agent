@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     # Plantilla del comprobante (cabecera IMAGE + 4 variables: valor, contrato, cédula, referencia).
     receipt_template_name: str = "comprobante_pago"
     receipt_template_language: str = "es"
-    # Valor (COP) de los trámites con costo: sábana de notas, paz y salvo y certificados.
+    # Valor (COP) de los trámites con costo (hoy solo los certificados).
     service_fee_cop: int = 18000
     # Gestor(es) de estudiantes que reciben el requerimiento ya pagado (E.164 sin '+', separados por
     # coma). Vacío = se usa STUDENT_REQUEST_NUMBERS.

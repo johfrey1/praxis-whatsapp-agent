@@ -21,6 +21,7 @@ REQUEST_TYPES = {
     "pagos": "Pagos",
     "cartera": "Cartera",
     "paz_y_salvo": "Paz y salvo",
+    "sabana_notas": "Sábana de notas",
     "recibo": "Recibo de pago",
     "congelamiento": "Congelamiento de contrato",
     "extension_contrato": "Extensión de contrato por fecha de caducidad",

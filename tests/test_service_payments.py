@@ -31,7 +31,7 @@ def _approved_service_payment() -> PaymentRequest:
         national_id="1020304050",
         contract_number="12345",
         account_number=None,
-        concept="paz_y_salvo",
+        concept="certificado",
         student_name="Ana María Pérez",
         status=PaymentStatus.approved,
         amount_in_cents=1800000,
@@ -76,7 +76,7 @@ async def test_wompi_fixed_amount_sends_amount_and_currency_together(monkeypatch
 
 def test_requirement_has_everything_the_manager_needs() -> None:
     text = payment_service.format_service_requirement(_approved_service_payment(), CONTACT)
-    for expected in ("paz y salvo", "Ana María Pérez", "1020304050", "12345", "+573012042870", "$18.000 COP", "PRX-1", "tx-1"):
+    for expected in ("certificado", "Ana María Pérez", "1020304050", "12345", "+573012042870", "$18.000 COP", "PRX-1", "tx-1"):
         assert expected in text, expected
 
 
@@ -145,7 +145,7 @@ def test_manager_numbers_default_to_student_service_number(monkeypatch) -> None:
 
 
 def test_new_request_types_available() -> None:
-    for t in ("congelamiento", "extension_contrato", "retoma", "queja_reclamo_sugerencia", "reporte_datacredito"):
+    for t in ("sabana_notas", "paz_y_salvo", "congelamiento", "extension_contrato", "retoma", "queja_reclamo_sugerencia", "reporte_datacredito"):
         assert t in student_request_service.REQUEST_TYPES
         req = student_request_service.build_request(
             {"request_type": t, "national_id": "1020304050", "phone": "3012042870", "email": "a@b.co", "request": "x"}
@@ -156,7 +156,24 @@ def test_new_request_types_available() -> None:
 def test_service_tool_is_declared_with_required_fields() -> None:
     tool = next(t for t in tools.TOOL_DEFINITIONS if t["name"] == "create_service_payment_link")
     assert set(tool["input_schema"]["required"]) == {"concept", "national_id", "contract_number", "full_name"}
-    assert set(tool["input_schema"]["properties"]["concept"]["enum"]) == {"sabana_notas", "paz_y_salvo", "certificado"}
+    assert tool["input_schema"]["properties"]["concept"]["enum"] == ["certificado"]
+
+
+def test_only_certificates_are_charged() -> None:
+    assert list(payment_service.SERVICE_CONCEPTS) == ["certificado"]
+
+
+@pytest.mark.asyncio
+async def test_transcript_and_clearance_are_not_charged(monkeypatch) -> None:
+    monkeypatch.setattr(type(tools.settings), "payments_enabled", property(lambda self: True))
+    ctx = SimpleNamespace(session=None, wompi_client=None, contact=CONTACT, conversation=None, whatsapp_client=None)
+    for concept in ("sabana_notas", "paz_y_salvo"):
+        result = await tools.execute_tool(
+            "create_service_payment_link",
+            {"concept": concept, "national_id": "1020304050", "contract_number": "12345", "full_name": "Ana Pérez"},
+            ctx,
+        )
+        assert result["error"] == "invalid_data", concept
 
 
 @pytest.mark.asyncio

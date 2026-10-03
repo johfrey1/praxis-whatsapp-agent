@@ -57,10 +57,9 @@ _STATUS_LABELS = {
 
 
 CONCEPT_CUOTA = "cuota"
-# Trámites que el estudiante antiguo paga antes de que se genere el requerimiento.
+# Trámites que el estudiante antiguo paga antes de que se genere el requerimiento. Sábana de notas
+# y paz y salvo no tienen costo y van por submit_student_request.
 SERVICE_CONCEPTS = {
-    "sabana_notas": "Sábana de notas",
-    "paz_y_salvo": "Paz y salvo",
     "certificado": "Certificado",
 }
 
@@ -167,8 +166,7 @@ async def create_service_payment(
     contract_number: str,
     student_name: str,
 ) -> PaymentRequest:
-    """Link de Wompi de valor fijo (`service_fee_cop`) para un trámite: sábana de notas, paz y
-    salvo o certificado. El requerimiento se envía al gestor cuando Wompi confirma el pago."""
+    """Link de Wompi de valor fijo (`service_fee_cop`) para un trámite con costo (certificado). El requerimiento se envía al gestor cuando Wompi confirma el pago."""
     if concept not in SERVICE_CONCEPTS:
         raise PaymentValidationError(f"Trámite no válido. Opciones: {', '.join(SERVICE_CONCEPTS)}.")
     national_id, contract_number, student_name = normalize_service_data(national_id, contract_number, student_name)

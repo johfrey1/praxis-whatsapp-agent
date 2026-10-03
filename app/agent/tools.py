@@ -148,7 +148,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "create_service_payment_link",
         "description": "Genera el link de pago (valor fijo, lo define la academia) de un trámite de un "
-        "estudiante antiguo: sábana de notas, paz y salvo o certificado. Requiere cédula, número de "
+        "estudiante antiguo: certificados (es el único trámite con costo). Requiere cédula, número de "
         "contrato y nombres y apellidos completos. Cuando Wompi confirma el pago, el requerimiento le llega "
         "al gestor de estudiantes y una copia a quien pagó. Si devuelve invalid_data, pide de nuevo el dato "
         "indicado en detail.",
@@ -158,7 +158,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "concept": {
                     "type": "string",
                     "enum": list(payment_service.SERVICE_CONCEPTS),
-                    "description": "sabana_notas, paz_y_salvo o certificado",
+                    "description": "Trámite a pagar: certificado",
                 },
                 "national_id": {"type": "string", "description": "Cédula del estudiante"},
                 "contract_number": {"type": "string", "description": "Número de contrato"},
