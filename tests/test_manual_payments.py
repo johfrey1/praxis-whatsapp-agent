@@ -89,6 +89,7 @@ def env(monkeypatch, tmp_path):
     s = manual_payment_service.settings
     monkeypatch.setattr(s, "document_storage_path", str(tmp_path))
     monkeypatch.setattr(s, "student_manager_numbers", "573102394548")
+    monkeypatch.setattr(s, "payment_receipt_numbers", "")
 
 
 @pytest.mark.asyncio
@@ -191,12 +192,17 @@ async def test_review_approve_and_reject_notify_student() -> None:
     pending = _awaiting()
     pending.status = "pending_approval"
     await manual_payment_service.review(FakeSession(), wa, pending, CONTACT, approve=True)
-    assert pending.status == "approved" and "confirmado" in wa.texts[0][1]
+    assert pending.status == "approved"
+    assert wa.templates[0]["name"] == "pago_confirmado" and wa.templates[0]["to"] == "573012042870"
+    assert wa.templates[0]["body_params"] == ["Ana", "cuota", "Bre-B", "PRX-B123"]
+    assert wa.templates[0]["header_image_media_id"] == "uploaded-1"
 
     rejected = _awaiting()
     rejected.status = "pending_approval"
     await manual_payment_service.review(FakeSession(), wa, rejected, CONTACT, approve=False, note="El valor no coincide")
-    assert rejected.status == "rejected" and "El valor no coincide" in wa.texts[1][1]
+    assert rejected.status == "rejected"
+    assert wa.templates[1]["name"] == "pago_no_confirmado"
+    assert wa.templates[1]["body_params"] == ["Ana", "cuota", "PRX-B123", "El valor no coincide"]
 
 
 @pytest.mark.asyncio
@@ -205,6 +211,7 @@ async def test_review_certificate_approval_sends_requirement_to_manager() -> Non
     payment.concept, payment.status = "certificado", "pending_approval"
     await manual_payment_service.review(FakeSession(), wa, payment, CONTACT, approve=True)
     assert wa.staff and "Requerimiento pagado y confirmado" in wa.staff[0][1]
+    assert not [t for t in wa.templates if t["name"] == "comprobante_pago"]  # ese texto dice "cuota"
 
 
 @pytest.mark.asyncio
@@ -262,7 +269,10 @@ def test_admin_endpoints_require_api_key_and_handle_review(monkeypatch) -> None:
     async def fake_send(self, to, body):
         sent.append(body)
 
+    posted = []
+
     async def fake_post(self, path, json=None, files=None, data=None):
+        posted.append(json)
         return {"id": "m1"}
 
     monkeypatch.setattr("app.whatsapp.client.WhatsAppClient.send_text", fake_send)
@@ -274,7 +284,8 @@ def test_admin_endpoints_require_api_key_and_handle_review(monkeypatch) -> None:
         assert client.post(url).status_code in (401, 422)
         ok = client.post(url, headers={"X-API-Key": "test"})
         assert ok.status_code == 200 and ok.json()["status"] == "approved"
-        assert sent and "confirmado" in sent[0]
+        templates = [p["template"]["name"] for p in posted if p and p.get("type") == "template"]
+        assert templates == ["pago_confirmado"]
         assert Session.committed == 1
         again = client.post(url, headers={"X-API-Key": "test"})
         assert again.status_code == 409
@@ -329,9 +340,9 @@ async def test_approval_sends_confirmed_receipt_to_student_and_service_number(mo
     wa, payment = FakeWhatsApp(), _awaiting()
     payment.status = "pending_approval"
     await manual_payment_service.review(FakeSession(), wa, payment, CONTACT, approve=True)
-    assert "573012042870" in wa.images and "confirmado" in wa.captions[0]
-    assert wa.templates and wa.templates[0]["name"] == "comprobante_pago"
-    assert wa.templates[0]["to"] == "573102394548"
+    service = [t for t in wa.templates if t["to"] == "573102394548"]
+    assert service and service[0]["name"] == "comprobante_pago"
+    assert [t["name"] for t in wa.templates if t["to"] == "573012042870"] == ["pago_confirmado"]
 
 
 def test_manual_receipt_images_render_both_states() -> None:
@@ -403,7 +414,7 @@ async def test_manager_approves_by_whatsapp() -> None:
     )
     assert payment.status == "approved"
     assert "quedó confirmado" in reply
-    assert any("confirmado" in body for _, body in wa.texts)
+    assert wa.templates[0]["name"] == "pago_confirmado"
 
 
 @pytest.mark.asyncio
@@ -414,7 +425,7 @@ async def test_manager_rejects_with_reason_by_whatsapp() -> None:
         CommandSession(payment), wa, MANAGER, "rechazar PRX-B0123456789 captura ilegible"
     )
     assert payment.status == "rejected" and "rechazado" in reply
-    assert "captura ilegible" in wa.texts[0][1]
+    assert wa.templates[0]["body_params"][-1] == "captura ilegible"
 
 
 @pytest.mark.asyncio
@@ -459,3 +470,17 @@ async def test_generated_references_are_understood_by_the_command_parser() -> No
             payment.reference,
             None,
         )
+
+
+@pytest.mark.asyncio
+async def test_result_falls_back_to_text_and_receipt_when_template_is_not_available() -> None:
+    wa, payment = FakeWhatsApp(template_fails=True), _awaiting()
+    payment.status = "pending_approval"
+    await manual_payment_service.review(FakeSession(), wa, payment, CONTACT, approve=True)
+    assert "confirmado" in wa.texts[0][1]
+    assert "573012042870" in wa.images
+
+    rejected, wa2 = _awaiting(), FakeWhatsApp(template_fails=True)
+    rejected.status = "pending_approval"
+    await manual_payment_service.review(FakeSession(), wa2, rejected, CONTACT, approve=False, note="captura ilegible")
+    assert "captura ilegible" in wa2.texts[0][1]

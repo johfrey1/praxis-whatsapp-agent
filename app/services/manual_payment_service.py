@@ -317,6 +317,56 @@ async def _send_confirmed_receipt_to_service(
                 logger.exception("manual_receipt_service_send_failed", reference=payment.reference, to=number)
 
 
+async def _notify_student_of_result(
+    whatsapp_client: WhatsAppClient,
+    payment: ManualPayment,
+    contact: Contact,
+    first_name: str,
+    label: str,
+    method: str,
+    approve: bool,
+    png: bytes | None,
+) -> None:
+    """Resultado al estudiante por plantilla (llega aunque su ventana de 24 h esté cerrada); si la
+    plantilla falla, texto libre y recibo como imagen, que llegan solo dentro de la ventana."""
+    try:
+        if approve:
+            media_id = await whatsapp_client.upload_media(png, f"recibo-{payment.reference}.png", "image/png") if png else None
+            await whatsapp_client.send_template(
+                to=contact.wa_id,
+                name=settings.manual_confirmed_template_name,
+                language=settings.manual_result_template_language,
+                body_params=[first_name, label, method, payment.reference],
+                header_image_media_id=media_id,
+            )
+        else:
+            await whatsapp_client.send_template(
+                to=contact.wa_id,
+                name=settings.manual_rejected_template_name,
+                language=settings.manual_result_template_language,
+                body_params=[first_name, label, payment.reference, payment.review_note or "no indicado"],
+            )
+        return
+    except Exception:
+        logger.warning("manual_result_template_failed_falling_back_to_text", reference=payment.reference)
+
+    if approve:
+        text = f"Tu pago por {method} de {label} fue confirmado. Referencia {payment.reference}."
+        if payment.concept in payment_service.SERVICE_CONCEPTS:
+            text += " Tu solicitud quedó registrada y el gestor de estudiantes la va a procesar."
+    else:
+        text = f"No pudimos confirmar tu pago por {method} de {label} (referencia {payment.reference})."
+        if payment.review_note:
+            text += f" Motivo: {payment.review_note}."
+        text += " Escríbeme y lo revisamos juntos."
+    try:
+        await whatsapp_client.send_text(to=contact.wa_id, body=text)
+        if approve and png is not None:
+            await _send_receipt_to_student(whatsapp_client, payment, contact, png, f"Recibo {payment.reference}: confirmado")
+    except Exception:
+        logger.exception("manual_review_notice_failed", reference=payment.reference)
+
+
 async def review(
     session: AsyncSession,
     whatsapp_client: WhatsAppClient,
@@ -336,28 +386,20 @@ async def review(
 
     label = CONCEPTS.get(payment.concept, payment.concept).lower()
     method = METHODS.get(payment.method, payment.method)
-    if approve:
-        text = f"Tu pago por {method} de {label} fue confirmado. Referencia {payment.reference}."
-        if payment.concept in payment_service.SERVICE_CONCEPTS:
-            text += " Tu solicitud quedó registrada y el gestor de estudiantes la va a procesar."
-    else:
-        text = f"No pudimos confirmar tu pago por {method} de {label} (referencia {payment.reference})."
-        if payment.review_note:
-            text += f" Motivo: {payment.review_note}."
-        text += " Escríbeme y lo revisamos juntos."
-    try:
-        await whatsapp_client.send_text(to=contact.wa_id, body=text)
-    except Exception:
-        logger.exception("manual_review_notice_failed", reference=payment.reference)
+    first_name = (payment.student_name or contact.profile_name or "").strip().split(" ")[0] or "estudiante"
 
+    png = None
     if approve:
         try:
             png = render_manual_receipt(payment, contact, confirmed=True)
             _save_receipt(payment, png)
-            await _send_receipt_to_student(whatsapp_client, payment, contact, png, f"Recibo {payment.reference}: confirmado")
-            await _send_confirmed_receipt_to_service(whatsapp_client, payment, png)
         except Exception:
             logger.exception("manual_receipt_render_failed", reference=payment.reference)
+    await _notify_student_of_result(whatsapp_client, payment, contact, first_name, label, method, approve, png)
+
+    if approve:
+        if payment.concept == "cuota" and png is not None:
+            await _send_confirmed_receipt_to_service(whatsapp_client, payment, png)
         if payment.concept in payment_service.SERVICE_CONCEPTS:
             for number in settings.student_manager_numbers_list:
                 try:

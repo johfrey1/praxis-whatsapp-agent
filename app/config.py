@@ -58,6 +58,12 @@ class Settings(BaseSettings):
     # para reenviar la captura al gestor aunque no haya escrito en 24 h; sin aprobar, se usa imagen libre.
     manual_receipt_template_name: str = "comprobante_transferencia"
     manual_receipt_template_language: str = "es"
+    # Resultado del pago al estudiante (llega aunque su ventana de 24 h ya se cerró):
+    # confirmado = cabecera IMAGE (el recibo) + 4 variables (nombre, trámite, medio, referencia);
+    # no confirmado = 4 variables (nombre, trámite, referencia, motivo).
+    manual_confirmed_template_name: str = "pago_confirmado"
+    manual_rejected_template_name: str = "pago_no_confirmado"
+    manual_result_template_language: str = "es"
     # Valor (COP) de los trámites con costo (hoy solo los certificados).
     service_fee_cop: int = 18000
     # Gestor(es) de estudiantes que reciben el requerimiento ya pagado (E.164 sin '+', separados por

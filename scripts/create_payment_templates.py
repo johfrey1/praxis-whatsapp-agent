@@ -1,10 +1,14 @@
-"""Crea en Meta las plantillas de WhatsApp para pagos con Wompi.
+"""Crea en Meta las plantillas de WhatsApp de pagos y trámites de estudiantes.
 
 - pago_cuota: recordatorio con botón "Pagar cuota" (URL dinámica checkout.wompi.co/l/{{1}}).
-- comprobante_pago: comprobante con imagen para el número de servicio (fuera de la ventana de 24 h).
-
+- comprobante_pago: comprobante de cuota con imagen para el número de servicio (fuera de 24 h).
 - solicitud_estudiante: solicitud de un estudiante (cédula, teléfono, correo y petición) para el
-  número de atención a estudiantes (fuera de la ventana de 24 h).
+  número de atención a estudiantes (fuera de 24 h).
+- comprobante_transferencia: captura de un pago por Bre-B/Nequi/Daviplata para el gestor.
+- pago_confirmado / pago_no_confirmado: resultado de un pago por transferencia para el estudiante.
+
+Todas son UTILITY, en español y sin emojis. Una vez creada, una plantilla no se edita: se borra y se
+crea otra con otro nombre (Meta no deja reusar un nombre borrado durante un tiempo).
 
 Uso (dentro del contenedor, donde están las variables de entorno). Sin argumentos crea todas;
 con nombres, solo esas:
@@ -174,7 +178,43 @@ def comprobante_transferencia() -> dict:
     }
 
 
-TEMPLATES = {f.__name__: f for f in (pago_cuota, comprobante_pago, solicitud_estudiante, comprobante_transferencia)}
+def pago_confirmado() -> dict:
+    return {
+        "name": "pago_confirmado",
+        "language": "es",
+        "category": "UTILITY",
+        "components": [
+            {"type": "HEADER", "format": "IMAGE", "example": {"header_handle": [upload_header_handle(sample_png())]}},
+            {
+                "type": "BODY",
+                "text": "Hola {{1}}, tu pago de {{2}} por {{3}} (referencia {{4}}) fue confirmado. Adjuntamos tu recibo.",
+                "example": {"body_text": [["Ana", "cuota", "Nequi", "PRX-BABC123"]]},
+            },
+            {"type": "FOOTER", "text": "Praxis School · Atención a estudiantes"},
+        ],
+    }
+
+
+def pago_no_confirmado() -> dict:
+    return {
+        "name": "pago_no_confirmado",
+        "language": "es",
+        "category": "UTILITY",
+        "components": [
+            {
+                "type": "BODY",
+                "text": (
+                    "Hola {{1}}, no pudimos confirmar tu pago de {{2}} (referencia {{3}}). Motivo: {{4}}. "
+                    "Escríbenos por este chat y lo revisamos juntos."
+                ),
+                "example": {"body_text": [["Ana", "cuota", "PRX-BABC123", "la captura no se ve completa"]]},
+            },
+            {"type": "FOOTER", "text": "Praxis School · Atención a estudiantes"},
+        ],
+    }
+
+
+TEMPLATES = {f.__name__: f for f in (pago_cuota, comprobante_pago, solicitud_estudiante, comprobante_transferencia, pago_confirmado, pago_no_confirmado)}
 
 for template_name in sys.argv[1:] or list(TEMPLATES):
     create(TEMPLATES[template_name]())
