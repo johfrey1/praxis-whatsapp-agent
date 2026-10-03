@@ -370,24 +370,42 @@ async def notify_payment_result(
 
 
 async def send_receipt_image(whatsapp_client: WhatsAppClient, payment: PaymentRequest, contact: Contact) -> None:
-    """Genera el comprobante como imagen, lo guarda como evidencia y lo envía al número de servicio."""
+    """Genera el comprobante como imagen, lo guarda como evidencia y lo envía al estudiante y al
+    número de servicio de estudiantes. Al número de servicio va por plantilla (llega aunque no haya
+    escrito en 24 h) y, si la plantilla falla, como imagen libre."""
     png = render_payment_receipt(payment, contact)
 
     receipts_dir = Path(settings.document_storage_path) / "receipts"
     receipts_dir.mkdir(parents=True, exist_ok=True)
     (receipts_dir / f"{payment.reference}.png").write_bytes(png)
 
-    if not settings.receipt_numbers:
-        logger.warning("no_receipt_numbers_configured", reference=payment.reference)
-        return
-
     media_id = await whatsapp_client.upload_media(png, f"comprobante-{payment.reference}.png", "image/png")
     caption = (
         f"Comprobante pago de cuota {format_cop(payment.amount_in_cents)} · contrato {payment.contract_number} "
         f"· cédula {payment.national_id} · ref {payment.reference}"
     )
+    # El estudiante acaba de pagar desde el chat: su ventana de 24 h está abierta.
+    try:
+        await whatsapp_client.send_image_by_media_id(to=contact.wa_id, media_id=media_id, caption=caption)
+    except Exception:
+        logger.exception("payment_receipt_student_send_failed", reference=payment.reference)
+
+    if not settings.receipt_numbers:
+        logger.warning("no_receipt_numbers_configured", reference=payment.reference)
+        return
+    body_params = [format_cop(payment.amount_in_cents), payment.contract_number, payment.national_id, payment.reference]
     for number in settings.receipt_numbers:
         try:
-            await whatsapp_client.send_image_by_media_id(to=number, media_id=media_id, caption=caption)
+            await whatsapp_client.send_template(
+                to=number,
+                name=settings.receipt_template_name,
+                language=settings.receipt_template_language,
+                body_params=body_params,
+                header_image_media_id=media_id,
+            )
         except Exception:
-            logger.exception("payment_receipt_send_failed", reference=payment.reference, to=number)
+            logger.warning("payment_receipt_template_failed_falling_back_to_image", reference=payment.reference, to=number)
+            try:
+                await whatsapp_client.send_image_by_media_id(to=number, media_id=media_id, caption=caption)
+            except Exception:
+                logger.exception("payment_receipt_send_failed", reference=payment.reference, to=number)

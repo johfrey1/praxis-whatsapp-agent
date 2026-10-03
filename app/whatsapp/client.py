@@ -50,10 +50,17 @@ class WhatsAppClient:
         language: str,
         body_params: list[str],
         url_button_suffix: str | None = None,
+        header_image_media_id: str | None = None,
     ) -> dict:
         """`url_button_suffix` es el valor de {{1}} en un botón URL dinámico de la plantilla
-        (p. ej. el id del link de pago en https://checkout.wompi.co/l/{{1}})."""
-        components: list[dict] = [{"type": "body", "parameters": [{"type": "text", "text": p} for p in body_params]}]
+        (p. ej. el id del link de pago en https://checkout.wompi.co/l/{{1}}) y `header_image_media_id`
+        la imagen (ya subida con upload_media) de una cabecera IMAGE."""
+        components: list[dict] = []
+        if header_image_media_id:
+            components.append(
+                {"type": "header", "parameters": [{"type": "image", "image": {"id": header_image_media_id}}]}
+            )
+        components.append({"type": "body", "parameters": [{"type": "text", "text": p} for p in body_params]})
         if url_button_suffix:
             components.append(
                 {

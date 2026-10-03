@@ -44,6 +44,9 @@ class Settings(BaseSettings):
     # aunque no haya escrito en las últimas 24 h (recordatorios de cuota).
     payment_template_name: str = "pago_cuota"
     payment_template_language: str = "es"
+    # Plantilla del comprobante (cabecera IMAGE + 4 variables: valor, contrato, cédula, referencia).
+    receipt_template_name: str = "comprobante_pago"
+    receipt_template_language: str = "es"
     # Número(s) de servicio (E.164 sin '+', separados por coma) que reciben la imagen del
     # comprobante de cada pago aprobado
     payment_receipt_numbers: str = ""
