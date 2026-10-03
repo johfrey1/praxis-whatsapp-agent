@@ -154,7 +154,27 @@ def solicitud_estudiante() -> dict:
     }
 
 
-TEMPLATES = {f.__name__: f for f in (pago_cuota, comprobante_pago, solicitud_estudiante)}
+def comprobante_breb() -> dict:
+    return {
+        "name": "comprobante_breb",
+        "language": "es",
+        "category": "UTILITY",
+        "components": [
+            {"type": "HEADER", "format": "IMAGE", "example": {"header_handle": [upload_header_handle(sample_png())]}},
+            {
+                "type": "BODY",
+                "text": (
+                    "Pago por Bre-B en espera de aprobación. Estudiante {{1}}, cédula {{2}}, contrato {{3}}, "
+                    "trámite {{4}}, referencia {{5}}. Revisa la captura y apruébalo o recházalo."
+                ),
+                "example": {"body_text": [["Ana Pérez", "1020304050", "12345", "Cuota", "PRX-BABC123"]]},
+            },
+            {"type": "FOOTER", "text": "Praxis School · Atención a estudiantes"},
+        ],
+    }
+
+
+TEMPLATES = {f.__name__: f for f in (pago_cuota, comprobante_pago, solicitud_estudiante, comprobante_breb)}
 
 for template_name in sys.argv[1:] or list(TEMPLATES):
     create(TEMPLATES[template_name]())

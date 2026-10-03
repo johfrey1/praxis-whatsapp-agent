@@ -14,7 +14,7 @@ from app.db.base import get_session
 from app.db.models import MessageDirection, MessageType
 from app.logging_config import get_logger
 from app.security import verify_webhook_signature
-from app.services import conversation_service
+from app.services import breb_service, conversation_service
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
 from app.whatsapp.parser import parse_failed_statuses, parse_incoming_messages
@@ -84,6 +84,21 @@ async def receive_webhook(
     return {"status": "ok"}
 
 
+async def _handle_breb_proof(session, whatsapp_client, payment, contact, media_id: str) -> str:
+    """La captura del pago por Bre-B queda como evidencia, en espera de aprobación, y va al gestor."""
+    try:
+        await breb_service.receive_proof(session, whatsapp_client, payment, contact, media_id)
+    except breb_service.BrebValidationError:
+        return "Ese archivo no lo puedo recibir. Envíame la captura del pago como foto o como PDF, por favor."
+    except Exception:
+        logger.exception("breb_proof_failed", reference=payment.reference)
+        return "No pude recibir tu captura. ¿Me la envías de nuevo en un momento?"
+    return (
+        f"Recibí tu comprobante. Tu pago {payment.reference} quedó en espera de aprobación; "
+        "ya se lo pasé al gestor de estudiantes y apenas lo confirme te aviso por aquí."
+    )
+
+
 async def _send_failure_notice(whatsapp_client: WhatsAppClient, wa_id: str) -> None:
     """Si algo falla al procesar, el usuario no debe quedarse sin respuesta."""
     try:
@@ -125,7 +140,21 @@ async def _handle_incoming_message(session, whatsapp_client, strapi_client, womp
         # Eligió Cursos/Horarios/Precios: es un prospecto, que el agente no vuelva a preguntarlo.
         user_text = f"{user_text} (eligió esta opción del menú: quiere aprender inglés en Praxis)"
 
-    if was_new and is_plain_greeting(user_text):
+    proof_payment = None
+    if incoming.message_type in ("image", "document") and incoming.media_id and not was_new:
+        proof_payment = await breb_service.find_awaiting_proof(session, contact)
+
+    if proof_payment is not None:
+        reply = await _handle_breb_proof(session, whatsapp_client, proof_payment, contact, incoming.media_id)
+        await whatsapp_client.send_text(to=contact.wa_id, body=reply)
+        await conversation_service.record_message(
+            session,
+            conversation,
+            direction=MessageDirection.outbound,
+            message_type=MessageType.text,
+            content=reply,
+        )
+    elif was_new and is_plain_greeting(user_text):
         # Bienvenida fija y personalizada: instantánea y sin menú duplicado.
         welcome_text = build_welcome(contact.profile_name)
         await whatsapp_client.send_text(to=contact.wa_id, body=welcome_text)

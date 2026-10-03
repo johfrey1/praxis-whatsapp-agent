@@ -234,6 +234,8 @@ async def send_installment_reminder(
     payment = await create_installment_payment(
         session, wompi_client, contact, conversation, national_id, contract_number, account_number
     )
+    # Se guarda antes de enviar: el link ya existe en Wompi y el webhook debe encontrar este pago.
+    await session.commit()
     first_name = (student_name or "").strip().split(" ")[0] or "estudiante"
     await whatsapp_client.send_template(
         to=contact.wa_id,
@@ -252,6 +254,7 @@ async def send_installment_reminder(
             f"{payment.contract_number}, cuenta {payment.account_number}\n[Botón Pagar cuota: {payment.payment_url}]"
         ),
     )
+    await session.commit()
     logger.info("payment_reminder_sent", reference=payment.reference, wa_id=contact.wa_id)
     return payment
 

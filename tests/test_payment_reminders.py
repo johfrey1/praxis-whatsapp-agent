@@ -118,7 +118,11 @@ async def test_send_installment_reminder_uses_template_with_link_id(monkeypatch)
         payment_url="https://checkout.wompi.co/l/test_AbC123",
         reference="PRX-ABC",
     )
-    sent, recorded = {}, []
+    sent, recorded, events = {}, [], []
+
+    class FakeDbSession:
+        async def commit(self):
+            events.append("commit")
 
     async def fake_conversation(session, contact):
         return SimpleNamespace(id="conv")
@@ -131,6 +135,7 @@ async def test_send_installment_reminder_uses_template_with_link_id(monkeypatch)
 
     class FakeWhatsApp:
         async def send_template(self, **kwargs):
+            events.append("send")
             sent.update(kwargs)
 
     monkeypatch.setattr(conversation_service, "get_or_create_active_conversation", fake_conversation)
@@ -138,7 +143,7 @@ async def test_send_installment_reminder_uses_template_with_link_id(monkeypatch)
     monkeypatch.setattr(payment_service, "create_installment_payment", fake_create)
 
     result = await payment_service.send_installment_reminder(
-        None, FakeWhatsApp(), None, SimpleNamespace(wa_id="573001112233"), "Ana Pérez", "1020304050", "12345", "001"
+        FakeDbSession(), FakeWhatsApp(), None, SimpleNamespace(wa_id="573001112233"), "Ana Pérez", "1020304050", "12345", "001"
     )
 
     assert result is payment
@@ -146,3 +151,5 @@ async def test_send_installment_reminder_uses_template_with_link_id(monkeypatch)
     assert sent["body_params"] == ["Ana", "12345", "001"]
     assert sent["url_button_suffix"] == "test_AbC123"
     assert recorded and "Recordatorio de cuota" in recorded[0]["content"]
+    # El pago se guarda antes de enviar: el link ya existe en Wompi y el webhook debe encontrarlo.
+    assert events[:2] == ["commit", "send"] and events[-1] == "commit"

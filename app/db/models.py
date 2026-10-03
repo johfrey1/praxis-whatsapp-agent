@@ -190,3 +190,29 @@ class PaymentEvent(Base):
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     payment_request: Mapped["PaymentRequest | None"] = relationship(back_populates="events")
+
+
+class ManualPayment(Base):
+    """Pago por llave Bre-B: el estudiante paga fuera de Wompi, envía la captura por WhatsApp y un
+    humano lo aprueba o rechaza. status: awaiting_proof | pending_approval | approved | rejected."""
+
+    __tablename__ = "manual_payments"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    contact_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("contacts.id"), index=True)
+    conversation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("conversations.id"), nullable=True)
+    reference: Mapped[str] = mapped_column(String(36), unique=True)
+    concept: Mapped[str] = mapped_column(String(30))  # cuota | certificado
+    national_id: Mapped[str] = mapped_column(String(20), index=True)
+    contract_number: Mapped[str] = mapped_column(String(40), index=True)
+    account_number: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    student_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    amount_in_cents: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="awaiting_proof", index=True)
+    proof_media_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    proof_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    proof_received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    review_note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
