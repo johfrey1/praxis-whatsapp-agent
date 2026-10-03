@@ -47,14 +47,17 @@ class Settings(BaseSettings):
     # Plantilla del comprobante (cabecera IMAGE + 4 variables: valor, contrato, cédula, referencia).
     receipt_template_name: str = "comprobante_pago"
     receipt_template_language: str = "es"
-    # Pago por llave Bre-B (transferencia inmediata): opción recomendada junto a Wompi. El estudiante
-    # paga a la llave, envía la captura por WhatsApp y el pago queda en espera de aprobación.
+    # Pagos por transferencia (opción recomendada junto a Wompi): llave Bre-B, Nequi o Daviplata. El
+    # estudiante paga, envía la captura por WhatsApp, recibe un recibo "por confirmar" y el pago queda
+    # en espera de aprobación del gestor.
     breb_key: str = "0089087583"
     breb_account_name: str = "PRAXIS SCHOOL"
-    # Plantilla (cabecera IMAGE + 5 variables) para reenviar la captura al gestor aunque no haya
-    # escrito en 24 h; si no está aprobada se usa imagen libre y el aviso de texto.
-    breb_receipt_template_name: str = "comprobante_breb"
-    breb_receipt_template_language: str = "es"
+    nequi_key: str = "@3002666815"
+    daviplata_number: str = "3002666815"
+    # Plantilla (cabecera IMAGE + 6 variables: medio, estudiante, cédula, contrato, trámite, referencia)
+    # para reenviar la captura al gestor aunque no haya escrito en 24 h; sin aprobar, se usa imagen libre.
+    manual_receipt_template_name: str = "comprobante_transferencia"
+    manual_receipt_template_language: str = "es"
     # Valor (COP) de los trámites con costo (hoy solo los certificados).
     service_fee_cop: int = 18000
     # Gestor(es) de estudiantes que reciben el requerimiento ya pagado (E.164 sin '+', separados por

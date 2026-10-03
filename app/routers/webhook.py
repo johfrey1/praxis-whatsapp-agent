@@ -14,7 +14,7 @@ from app.db.base import get_session
 from app.db.models import MessageDirection, MessageType
 from app.logging_config import get_logger
 from app.security import verify_webhook_signature
-from app.services import breb_service, conversation_service
+from app.services import manual_payment_service, conversation_service
 from app.strapi.client import StrapiClient
 from app.whatsapp.client import WhatsAppClient
 from app.whatsapp.parser import parse_failed_statuses, parse_incoming_messages
@@ -84,14 +84,14 @@ async def receive_webhook(
     return {"status": "ok"}
 
 
-async def _handle_breb_proof(session, whatsapp_client, payment, contact, media_id: str) -> str:
-    """La captura del pago por Bre-B queda como evidencia, en espera de aprobación, y va al gestor."""
+async def _handle_payment_proof(session, whatsapp_client, payment, contact, media_id: str) -> str:
+    """La captura del pago (Bre-B, Nequi o Daviplata) queda como evidencia, en espera de aprobación, y va al gestor."""
     try:
-        await breb_service.receive_proof(session, whatsapp_client, payment, contact, media_id)
-    except breb_service.BrebValidationError:
+        await manual_payment_service.receive_proof(session, whatsapp_client, payment, contact, media_id)
+    except manual_payment_service.ManualPaymentError:
         return "Ese archivo no lo puedo recibir. Envíame la captura del pago como foto o como PDF, por favor."
     except Exception:
-        logger.exception("breb_proof_failed", reference=payment.reference)
+        logger.exception("manual_payment_proof_failed", reference=payment.reference)
         return "No pude recibir tu captura. ¿Me la envías de nuevo en un momento?"
     return (
         f"Recibí tu comprobante. Tu pago {payment.reference} quedó en espera de aprobación; "
@@ -142,10 +142,10 @@ async def _handle_incoming_message(session, whatsapp_client, strapi_client, womp
 
     proof_payment = None
     if incoming.message_type in ("image", "document") and incoming.media_id and not was_new:
-        proof_payment = await breb_service.find_awaiting_proof(session, contact)
+        proof_payment = await manual_payment_service.find_awaiting_proof(session, contact)
 
     if proof_payment is not None:
-        reply = await _handle_breb_proof(session, whatsapp_client, proof_payment, contact, incoming.media_id)
+        reply = await _handle_payment_proof(session, whatsapp_client, proof_payment, contact, incoming.media_id)
         await whatsapp_client.send_text(to=contact.wa_id, body=reply)
         await conversation_service.record_message(
             session,

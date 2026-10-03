@@ -8,11 +8,12 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from app.db.models import Contact, PaymentRequest
+from app.db.models import Contact, ManualPayment, PaymentRequest
 
 _WIDTH = 900
 _MARGIN = 60
 _GREEN = (22, 128, 61)
+_AMBER = (180, 83, 9)
 _DARK = (33, 37, 41)
 _MUTED = (108, 117, 125)
 _LINE = (222, 226, 230)
@@ -97,6 +98,61 @@ def render_payment_receipt(payment: PaymentRequest, contact: Contact) -> bytes:
         font=_font(20),
         fill=_MUTED,
     )
+
+    buffer = io.BytesIO()
+    image.save(buffer, format="PNG", optimize=True)
+    return buffer.getvalue()
+
+
+_METHOD_LABELS = {"breb": "Llave Bre-B", "nequi": "Nequi", "daviplata": "Daviplata"}
+_CONCEPT_LABELS = {"cuota": "Cuota", "certificado": "Certificado"}
+
+
+def render_manual_receipt(payment: ManualPayment, contact: Contact, *, confirmed: bool) -> bytes:
+    """Recibo de un pago por transferencia. `confirmed=False` lo marca POR CONFIRMAR (el gestor aún
+    no lo aprueba); `confirmed=True` lo marca CONFIRMADO."""
+    color = _GREEN if confirmed else _AMBER
+    tint = (232, 245, 236) if confirmed else (254, 243, 224)
+    when = (payment.reviewed_at if confirmed else payment.proof_received_at) or datetime.now(timezone.utc)
+    when = when.astimezone(timezone(timedelta(hours=-5)))
+    rows = [
+        ("Trámite", _CONCEPT_LABELS.get(payment.concept, payment.concept)),
+        ("Valor", _format_cop(payment.amount_in_cents) if payment.amount_in_cents else "Por confirmar"),
+        ("Medio de pago", _METHOD_LABELS.get(payment.method, payment.method)),
+        ("Fecha", when.strftime("%d/%m/%Y %I:%M %p") + " (hora Colombia)"),
+        ("Referencia", payment.reference),
+        ("Cédula", payment.national_id),
+        ("Contrato", payment.contract_number),
+    ]
+    if payment.account_number:
+        rows.append(("Cuenta", payment.account_number))
+    rows.append(("Estudiante", payment.student_name or f"{contact.profile_name or '-'} (+{contact.wa_id})"))
+
+    row_height = 62
+    height = 330 + row_height * len(rows) + 110
+    image = Image.new("RGB", (_WIDTH, height), "white")
+    draw = ImageDraw.Draw(image)
+
+    draw.rectangle([0, 0, _WIDTH, 150], fill=color)
+    draw.text((_MARGIN, 38), "Praxis English School", font=_font(44), fill="white")
+    draw.text((_MARGIN, 96), "Recibo de pago por transferencia", font=_font(28), fill="white")
+
+    draw.rounded_rectangle([_MARGIN, 185, _WIDTH - _MARGIN, 265], radius=16, fill=tint)
+    draw.text((_MARGIN + 30, 205), "PAGO CONFIRMADO" if confirmed else "POR CONFIRMAR", font=_font(38), fill=color)
+
+    y = 300
+    for label, value in rows:
+        draw.text((_MARGIN, y), _t(label), font=_font(24), fill=_MUTED)
+        draw.text((_MARGIN + 290, y - 2), _fit(draw, _t(value), _font(28), _WIDTH - 2 * _MARGIN - 290), font=_font(28), fill=_DARK)
+        y += row_height
+        draw.line([_MARGIN, y - 16, _WIDTH - _MARGIN, y - 16], fill=_LINE, width=2)
+
+    note = (
+        "Pago verificado y confirmado por el gestor de estudiantes."
+        if confirmed
+        else "Recibimos tu captura. El gestor de estudiantes confirmará tu pago y te avisaremos."
+    )
+    draw.text((_MARGIN, y + 20), _t(note), font=_font(20), fill=_MUTED)
 
     buffer = io.BytesIO()
     image.save(buffer, format="PNG", optimize=True)

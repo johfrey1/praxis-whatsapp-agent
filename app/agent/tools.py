@@ -14,7 +14,7 @@ from app.db.models import Contact, Conversation, MessageDirection, MessageType
 from app.config import get_settings
 from app.logging_config import get_logger
 from app.services import (
-    breb_service,
+    manual_payment_service,
     conversation_service,
     document_service,
     lead_service,
@@ -169,16 +169,17 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         },
     },
     {
-        "name": "start_breb_payment",
-        "description": "Inicia un pago por llave Bre-B (opción RECOMENDADA, junto al link de Wompi). Devuelve "
-        "la llave, el nombre de la cuenta, el valor (si se conoce) y una referencia. Después de pagar, el "
-        "estudiante envía la captura de pantalla por este mismo chat y el pago queda en espera de "
-        "aprobación. Para cuota pide cédula, contrato y cuenta (y el valor si lo sabe); para certificado "
-        "pide cédula, contrato y nombres y apellidos completos. Si devuelve invalid_data, pide de nuevo el "
-        "dato indicado en detail.",
+        "name": "start_manual_payment",
+        "description": "Inicia un pago por transferencia: llave Bre-B (RECOMENDADA), Nequi o Daviplata. Devuelve "
+        "adónde pagar (destination), el valor si se conoce y una referencia. Después de pagar, el estudiante "
+        "envía la captura de pantalla por este mismo chat, recibe un recibo POR CONFIRMAR y el pago queda en "
+        "espera de aprobación del gestor. Para cuota pide cédula, contrato y cuenta (y el valor si lo sabe); "
+        "para certificado pide cédula, contrato y nombres y apellidos completos. Si devuelve invalid_data, "
+        "pide de nuevo el dato indicado en detail.",
         "input_schema": {
             "type": "object",
             "properties": {
+                "method": {"type": "string", "enum": list(manual_payment_service.METHODS), "description": "breb, nequi o daviplata"},
                 "concept": {"type": "string", "enum": ["cuota", "certificado"], "description": "Qué se paga"},
                 "national_id": {"type": "string", "description": "Cédula del estudiante"},
                 "contract_number": {"type": "string", "description": "Número de contrato"},
@@ -186,7 +187,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
                 "full_name": {"type": "string", "description": "Nombres y apellidos (obligatorio en certificado)"},
                 "amount_cop": {"type": "integer", "description": "Valor en pesos que va a pagar (solo cuota, opcional)"},
             },
-            "required": ["concept", "national_id", "contract_number"],
+            "required": ["method", "concept", "national_id", "contract_number"],
         },
     },
     {
@@ -355,9 +356,9 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
             logger.exception("payment_button_failed", reference=payment.reference)
             return {"status": "link_created", "amount": fee, "payment_url": payment.payment_url}
 
-    if name == "start_breb_payment":
+    if name == "start_manual_payment":
         try:
-            payment = await breb_service.start_payment(
+            payment = await manual_payment_service.start_payment(
                 ctx.session,
                 ctx.contact,
                 ctx.conversation,
@@ -367,13 +368,14 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
                 account_number=tool_input.get("account_number", ""),
                 student_name=tool_input.get("full_name", ""),
                 amount_cop=tool_input.get("amount_cop"),
+                method=tool_input.get("method", "breb"),
             )
-        except breb_service.BrebValidationError as exc:
+        except manual_payment_service.ManualPaymentError as exc:
             return {"error": "invalid_data", "detail": str(exc)}
         return {
             "status": "awaiting_proof",
-            "breb_key": settings.breb_key,
-            "account_name": settings.breb_account_name,
+            "method": manual_payment_service.METHODS[payment.method],
+            "destination": manual_payment_service.destination(payment.method),
             "amount": payment_service.format_cop(payment.amount_in_cents) if payment.amount_in_cents else None,
             "reference": payment.reference,
         }

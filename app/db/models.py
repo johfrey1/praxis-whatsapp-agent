@@ -193,7 +193,7 @@ class PaymentEvent(Base):
 
 
 class ManualPayment(Base):
-    """Pago por llave Bre-B: el estudiante paga fuera de Wompi, envía la captura por WhatsApp y un
+    """Pago por transferencia (Bre-B, Nequi o Daviplata): el estudiante paga fuera de Wompi, envía la captura por WhatsApp y un
     humano lo aprueba o rechaza. status: awaiting_proof | pending_approval | approved | rejected."""
 
     __tablename__ = "manual_payments"
@@ -203,6 +203,7 @@ class ManualPayment(Base):
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("conversations.id"), nullable=True)
     reference: Mapped[str] = mapped_column(String(36), unique=True)
     concept: Mapped[str] = mapped_column(String(30))  # cuota | certificado
+    method: Mapped[str] = mapped_column(String(20), default="breb", server_default="breb")  # breb | nequi | daviplata
     national_id: Mapped[str] = mapped_column(String(20), index=True)
     contract_number: Mapped[str] = mapped_column(String(40), index=True)
     account_number: Mapped[str | None] = mapped_column(String(40), nullable=True)

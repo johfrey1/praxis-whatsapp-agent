@@ -11,7 +11,7 @@ from app.config import get_settings
 from app.db.base import get_session
 from app.db.models import Contact, ManualPayment
 from app.security import require_admin_api_key
-from app.services import breb_service
+from app.services import manual_payment_service
 from app.whatsapp.client import WhatsAppClient
 
 router = APIRouter(
@@ -30,6 +30,7 @@ def _serialize(payment: ManualPayment, wa_id: str) -> dict:
         "reference": payment.reference,
         "wa_id": wa_id,
         "concept": payment.concept,
+        "method": payment.method,
         "student_name": payment.student_name,
         "national_id": payment.national_id,
         "contract_number": payment.contract_number,
@@ -82,8 +83,8 @@ async def get_proof(payment_id: uuid.UUID, session: AsyncSession = Depends(get_s
 async def _review(payment_id: uuid.UUID, body: ReviewIn, session: AsyncSession, approve: bool) -> dict:
     payment, contact = await _get_or_404(session, payment_id)
     try:
-        await breb_service.review(session, WhatsAppClient(), payment, contact, approve=approve, note=body.note)
-    except breb_service.BrebValidationError as exc:
+        await manual_payment_service.review(session, WhatsAppClient(), payment, contact, approve=approve, note=body.note)
+    except manual_payment_service.ManualPaymentError as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     await session.commit()
     return _serialize(payment, contact.wa_id)
