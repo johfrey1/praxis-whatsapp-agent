@@ -59,7 +59,7 @@ async def send_reminder(body: ReminderIn, session: AsyncSession = Depends(get_se
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "Payments are not configured")
     wa_id = re.sub(r"\D", "", body.wa_id)
     if not re.fullmatch(r"57\d{10}", wa_id):
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "wa_id must be a Colombian number: 57 + 10 digits")
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "wa_id must be a Colombian number: 57 + 10 digits")
 
     contact, _ = await conversation_service.get_or_create_contact(session, wa_id, body.student_name)
     # Ya lo conocemos: si responde, no debe recibir la bienvenida de contactos nuevos.
@@ -76,7 +76,7 @@ async def send_reminder(body: ReminderIn, session: AsyncSession = Depends(get_se
             body.account_number,
         )
     except payment_service.PaymentValidationError as exc:
-        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except Exception as exc:
         # El link puede haberse creado sin que el mensaje saliera: no se confirma nada al admin.
         await session.rollback()

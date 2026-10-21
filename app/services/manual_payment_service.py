@@ -21,7 +21,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.db.models import Contact, ManualPayment
+from app.db.models import Contact, ManualPayment, contact_handle
 from app.logging_config import get_logger
 from app.services import payment_service
 from app.services.receipt_image import render_manual_receipt
@@ -172,7 +172,7 @@ def format_notification(payment: ManualPayment, contact: Contact, *, status_line
         lines.append(f"Cuenta: {payment.account_number}")
     if payment.amount_in_cents:
         lines.append(f"Valor: {payment_service.format_cop(payment.amount_in_cents)}")
-    lines.append(f"WhatsApp: +{contact.wa_id}")
+    lines.append(f"WhatsApp: {contact_handle(contact)}")
     lines.append(f"Referencia: {payment.reference}")
     return "\n".join(lines)
 

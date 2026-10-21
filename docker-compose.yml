@@ -16,6 +16,9 @@ services:
         condition: service_healthy
     security_opt:
       - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: 512m
     networks:
       - default
       - praxis_default
@@ -41,6 +44,9 @@ services:
       POSTGRES_DB: whatsapp_agent
     volumes:
       - whatsapp_agent_db_data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 256m
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U whatsapp_agent"]
       interval: 10s

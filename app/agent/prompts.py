@@ -17,12 +17,15 @@ asesor se lo explica personalmente, ajustado a lo que busca.
   1. Descubre qué quiere lograr con el inglés (viajar, trabajo, estudios, conversar…), si aún \
 no lo dijo. Cuando lo diga, conéctalo en una frase sincera con lo que va a lograr aprendiendo \
 en Praxis (sin prometer resultados concretos ni tiempos).
-  2. Pídele en un solo mensaje su nombre completo y su correo, para que un asesor lo contacte \
-en un momento y le arme un plan a su medida.
-  3. Con nombre y correo, llama save_lead (full_name, email, program_interest = su objetivo con \
-sus palabras, comments = cualquier detalle útil). Si responde invalid_email, pídele el correo de \
-nuevo con amabilidad. Si responde saved, confírmale por su nombre que un asesor lo contactará en \
-un momento, y despídete con calidez.
+  2. Pídele en un solo mensaje su nombre completo y su correo (y su número de celular si el \
+contexto dice que WhatsApp no nos lo compartió), para que un asesor lo llame en un momento y le \
+arme un plan a su medida.
+  3. Con esos datos, llama save_lead (full_name, email, phone si te lo dio, program_interest = su \
+objetivo con sus palabras, comments = cualquier detalle útil). Si responde invalid_email, pídele \
+el correo de nuevo con amabilidad. Si responde phone_required o invalid_phone, explícale que el \
+asesor necesita llamarlo y pídele su número de celular (10 dígitos); sin él no queda registrado. \
+Si responde saved, confírmale por su nombre que un asesor lo contactará en un momento, y \
+despídete con calidez.
 - Si ya dejó sus datos, no se los vuelvas a pedir.
 
 MODO SERVICIO (estudiante actual):
@@ -81,8 +84,8 @@ herramientas (tools) para consultar datos reales antes de responder algo especí
 herramienta no devuelve el dato, dilo con honestidad y ofrece escalar con un asesor humano.
 3. No tienes acceso a contratos, facturas, saldos ni cartera de estudiantes: esas consultas se \
 escalan como indica el MODO SERVICIO. Pagar una cuota en línea SÍ lo puedes gestionar (regla 8).
-4. Con prospectos, captura los datos como indica el MODO VENDEDOR: nombre completo y correo \
-(el teléfono ya lo tenemos por WhatsApp).
+4. Con prospectos, captura los datos como indica el MODO VENDEDOR: nombre completo, correo y un \
+teléfono para llamarlo (si WhatsApp no nos compartió su celular, pídeselo: es indispensable).
 5. Si el usuario pide un documento (brochure, temario, lista de precios, etc.), usa \
 list_documents para ver qué hay disponible y send_document para enviarlo. No prometas documentos \
 que no existen en list_documents.
@@ -110,12 +113,23 @@ pantalla del pago: así recibe un recibo con el estado "por confirmar" y se la h
 gestor de estudiantes, que confirma el pago. Nunca digas que un pago por transferencia está \
 confirmado: lo confirma una persona al revisar la captura. Si responde invalid_data, pide solo el \
 dato indicado.
+10. Imágenes y PDF: cuando el usuario envía una foto, captura o PDF, lo ves junto a su mensaje. \
+Úsalo para entender qué necesita (un error en pantalla, un horario, un documento) y responde a eso; \
+no digas que no puedes ver imágenes. Si parece un comprobante de pago, no lo des por confirmado: \
+sigue la regla 9 o el MODO SERVICIO. Las notas de voz y los videos todavía no los puedes escuchar \
+ni ver.
 """
 
 
-def contact_new_context(is_new: bool, profile_name: str | None = None) -> str:
+def contact_new_context(is_new: bool, profile_name: str | None = None, has_phone: bool = True) -> str:
     name = f'Su nombre de perfil en WhatsApp es "{profile_name}" (úsalo para saludar; el nombre ' \
         "completo pídeselo igual)." if profile_name else "No conocemos su nombre todavía."
+    if not has_phone:
+        # Usuarios con nombre de usuario de WhatsApp: Meta no siempre comparte el celular.
+        name += (
+            " WhatsApp no nos compartió su número de celular: pídeselo junto con los demás datos; "
+            "es indispensable para que el asesor lo llame."
+        )
     if is_new:
         return (
             f"Contexto: contacto NUEVO, es su primer mensaje. {name} Salúdalo por su nombre, "

@@ -1,7 +1,7 @@
 """Cliente para la WhatsApp Cloud API (Meta Graph API)."""
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
 from app.config import get_settings
 from app.logging_config import get_logger
@@ -9,7 +9,39 @@ from app.logging_config import get_logger
 settings = get_settings()
 logger = get_logger(__name__)
 
-_retry = retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=8))
+
+def _is_transient(exc: BaseException) -> bool:
+    """Solo vale la pena reintentar fallas de red, 429 y 5xx; un 400 (p. ej. destinatario inválido o
+    fuera de la ventana de 24 h) fallará igual y reintentarlo solo demora la respuesta."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return isinstance(exc, httpx.TransportError)
+
+
+_retry = retry(
+    retry=retry_if_exception(_is_transient),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=1, max=8),
+    reraise=True,
+)
+
+_http: httpx.AsyncClient | None = None
+
+
+def _http_client() -> httpx.AsyncClient:
+    """Cliente compartido: reutiliza la conexión TLS con Meta entre envíos (antes se abría una por envío)."""
+    global _http
+    if _http is None or _http.is_closed:
+        _http = httpx.AsyncClient(timeout=30)
+    return _http
+
+
+def recipient_fields(to: str) -> dict:
+    """Celular -> `to`; BSUID (p. ej. CO.1090028550326215, usuarios con nombre de usuario que no
+    comparten su número) -> `recipient`. Meta rechaza `to` con un BSUID."""
+    if to.isdigit():
+        return {"to": to}
+    return {"recipient_type": "individual", "recipient": to}
 
 
 class WhatsAppClient:
@@ -19,25 +51,30 @@ class WhatsAppClient:
 
     @_retry
     async def _post(self, path: str, json: dict | None = None, files: dict | None = None, data: dict | None = None) -> dict:
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(f"{self._base_url}/{path}", headers=self._headers, json=json, files=files, data=data)
+        if json is not None and "messaging_product" in json and not (json.get("to") or json.get("recipient") or json.get("status")):
+            raise ValueError("WhatsApp message without recipient")
+        response = await _http_client().post(
+            f"{self._base_url}/{path}", headers=self._headers, json=json, files=files, data=data
+        )
         if response.is_error:
             logger.error("whatsapp_api_error", path=path, status=response.status_code, body=response.text)
         response.raise_for_status()
         return response.json()
 
-    async def mark_as_read(self, wa_message_id: str) -> None:
-        await self._post(
-            "messages",
-            json={"messaging_product": "whatsapp", "status": "read", "message_id": wa_message_id},
-        )
+    async def mark_as_read(self, wa_message_id: str, typing: bool = False) -> None:
+        """Marca como leído; con `typing` el usuario ve "escribiendo..." hasta que llegue la respuesta
+        (Meta lo quita a los 25 s o al enviar el siguiente mensaje)."""
+        body = {"messaging_product": "whatsapp", "status": "read", "message_id": wa_message_id}
+        if typing:
+            body["typing_indicator"] = {"type": "text"}
+        await self._post("messages", json=body)
 
     async def send_text(self, to: str, body: str, preview_url: bool = False) -> dict:
         return await self._post(
             "messages",
             json={
                 "messaging_product": "whatsapp",
-                "to": to,
+                **recipient_fields(to),
                 "type": "text",
                 "text": {"body": body, "preview_url": preview_url},
             },
@@ -74,7 +111,7 @@ class WhatsAppClient:
             "messages",
             json={
                 "messaging_product": "whatsapp",
-                "to": to,
+                **recipient_fields(to),
                 "type": "template",
                 "template": {"name": name, "language": {"code": language}, "components": components},
             },
@@ -104,7 +141,7 @@ class WhatsAppClient:
             "messages",
             json={
                 "messaging_product": "whatsapp",
-                "to": to,
+                **recipient_fields(to),
                 "type": "interactive",
                 "interactive": {
                     "type": "list",
@@ -130,7 +167,7 @@ class WhatsAppClient:
             interactive["footer"] = {"text": footer}
         return await self._post(
             "messages",
-            json={"messaging_product": "whatsapp", "to": to, "type": "interactive", "interactive": interactive},
+            json={"messaging_product": "whatsapp", **recipient_fields(to), "type": "interactive", "interactive": interactive},
         )
 
     async def send_document_by_media_id(self, to: str, media_id: str, filename: str, caption: str | None = None) -> dict:
@@ -138,7 +175,7 @@ class WhatsAppClient:
             "messages",
             json={
                 "messaging_product": "whatsapp",
-                "to": to,
+                **recipient_fields(to),
                 "type": "document",
                 "document": {"id": media_id, "filename": filename, "caption": caption},
             },
@@ -150,7 +187,7 @@ class WhatsAppClient:
             image["caption"] = caption
         return await self._post(
             "messages",
-            json={"messaging_product": "whatsapp", "to": to, "type": "image", "image": image},
+            json={"messaging_product": "whatsapp", **recipient_fields(to), "type": "image", "image": image},
         )
 
     async def upload_media(self, file_bytes: bytes, filename: str, mime_type: str) -> str:
@@ -161,11 +198,10 @@ class WhatsAppClient:
         return result["id"]
 
     async def download_media(self, media_id: str) -> tuple[bytes, str]:
-        async with httpx.AsyncClient(timeout=30) as client:
-            meta_resp = await client.get(f"{settings.graph_api_base_url}/{media_id}", headers=self._headers)
+        client = _http_client()
+        meta_resp = await client.get(f"{settings.graph_api_base_url}/{media_id}", headers=self._headers)
         meta_resp.raise_for_status()
         meta = meta_resp.json()
-        async with httpx.AsyncClient(timeout=60) as client:
-            file_resp = await client.get(meta["url"], headers=self._headers)
+        file_resp = await client.get(meta["url"], headers=self._headers, timeout=60)
         file_resp.raise_for_status()
         return file_resp.content, meta.get("mime_type", "application/octet-stream")

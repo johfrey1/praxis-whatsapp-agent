@@ -4,7 +4,7 @@ from app.agent.prompts import SYSTEM_PROMPT, contact_new_context
 from app.agent.text import strip_emojis
 from app.agent.tools import TOOL_DEFINITIONS, ToolContext, execute_tool
 from app.config import get_settings
-from app.db.models import Message, MessageDirection
+from app.db.models import Message, MessageDirection, has_phone
 from app.logging_config import get_logger
 
 settings = get_settings()
@@ -32,28 +32,50 @@ async def run_agent_turn(
     user_text: str,
     history: list[Message],
     tool_ctx: ToolContext,
+    attachments: list[dict] | None = None,
 ) -> tuple[str, list[dict]]:
     """Ejecuta el loop de tool-use de Claude para un turno de conversación.
 
+    `attachments` son bloques de imagen o PDF que el usuario envió con este mensaje.
     Devuelve (texto_final_para_el_usuario, registro_de_tool_calls_ejecutadas).
     """
     messages = _history_to_messages(history)
-    messages.append({"role": "user", "content": user_text})
+    if attachments:
+        messages.append({"role": "user", "content": [*attachments, {"type": "text", "text": user_text}]})
+    else:
+        messages.append({"role": "user", "content": user_text})
 
-    system_prompt = (
-        f"{SYSTEM_PROMPT}\n\n"
-        f"{contact_new_context(tool_ctx.contact.is_new, tool_ctx.contact.profile_name)}"
-    )
+    contact = tool_ctx.contact
+    # El prompt fijo (tools + SYSTEM_PROMPT, ~6.600 tokens) va primero y en caché; el contexto del
+    # contacto cambia por persona y va después del punto de caché para no invalidarlo.
+    system_blocks = [
+        {"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}},
+        {"type": "text", "text": contact_new_context(contact.is_new, contact.profile_name, has_phone(contact))},
+    ]
     executed_tool_calls: list[dict] = []
 
     for _ in range(_MAX_TOOL_ITERATIONS):
         response = await _client.messages.create(
             model=settings.claude_model,
             max_tokens=settings.claude_max_tokens,
-            system=system_prompt,
+            system=system_blocks,
             tools=TOOL_DEFINITIONS,
             messages=messages,
+            # Caché automática de la conversación: cada vuelta del loop de tools reutiliza la anterior.
+            cache_control={"type": "ephemeral"},
         )
+        usage = response.usage
+        logger.info(
+            "claude_usage",
+            wa_id=contact.wa_id,
+            stop_reason=response.stop_reason,
+            input_tokens=usage.input_tokens,
+            cache_read=usage.cache_read_input_tokens,
+            cache_write=usage.cache_creation_input_tokens,
+            output_tokens=usage.output_tokens,
+        )
+        if response.stop_reason == "max_tokens":
+            logger.warning("claude_max_tokens_reached", wa_id=contact.wa_id, max_tokens=settings.claude_max_tokens)
 
         if response.stop_reason != "tool_use":
             return _extract_text(response), executed_tool_calls

@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # Número(s) que reciben las solicitudes de estudiantes (cédula, teléfono, correo y petición)
     student_request_numbers: str = "573102394548"
 
+    # Conversaciones sin terminar: minutos sin respuesta del cliente para pasárselo al encargado
+    # (0 = desactivado) y cada cuántos segundos se revisa.
+    handoff_after_minutes: int = 30
+    handoff_check_interval_seconds: int = 300
+
     # Admin API
     admin_api_key: str
 

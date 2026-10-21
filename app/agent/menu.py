@@ -47,8 +47,13 @@ MEDIA_FALLBACK_TEXT = {
         "Recibí tu nota de voz, pero por ahora no puedo escucharla. "
         "¿Me escribes tu pregunta? Si prefieres, escribe *asesor* y te comunico con una persona."
     ),
+    "video": (
+        "Recibí tu video, pero por ahora no puedo verlo. "
+        "¿Me cuentas por escrito qué necesitas? Si prefieres, escribe *asesor* y te comunico con una persona."
+    ),
+    # Solo si la imagen no se pudo abrir: las que sí se descargan las ve el agente.
     "image": (
-        "Recibí tu imagen, pero por ahora no puedo verla. "
+        "Recibí tu imagen, pero no logré abrirla. "
         "¿Me cuentas por escrito qué necesitas? Si prefieres, escribe *asesor* y te comunico con una persona."
     ),
     "document": (

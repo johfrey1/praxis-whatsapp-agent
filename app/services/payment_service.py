@@ -28,6 +28,7 @@ from app.db.models import (
     PaymentEvent,
     PaymentRequest,
     PaymentStatus,
+    contact_handle,
 )
 from app.logging_config import get_logger
 from app.services import conversation_service
@@ -410,7 +411,7 @@ def format_service_requirement(payment: PaymentRequest, contact: Contact) -> str
             f"Estudiante: {payment.student_name}",
             f"Cédula: {payment.national_id}",
             f"Contrato: {payment.contract_number}",
-            f"WhatsApp: +{contact.wa_id}",
+            f"WhatsApp: {contact_handle(contact)}",
             f"Valor pagado: {format_cop(payment.amount_in_cents)} ({payment.payment_method_type or 'medio no informado'})",
             f"Fecha de pago: {paid_at.strftime('%d/%m/%Y %I:%M %p') if paid_at else '—'}",
             f"Referencia: {payment.reference} · Transacción Wompi: {payment.wompi_transaction_id}",

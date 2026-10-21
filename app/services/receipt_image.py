@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-from app.db.models import Contact, ManualPayment, PaymentRequest
+from app.db.models import Contact, ManualPayment, PaymentRequest, contact_handle
 
 _WIDTH = 900
 _MARGIN = 60
@@ -70,7 +70,7 @@ def render_payment_receipt(payment: PaymentRequest, contact: Contact) -> bytes:
         ("Cédula", payment.national_id),
         ("Contrato", payment.contract_number),
         ("Cuenta", payment.account_number),
-        ("Estudiante", f"{contact.profile_name or '-'} (+{contact.wa_id})"),
+        ("Estudiante", f"{contact.profile_name or '-'} ({contact_handle(contact)})"),
     ]
 
     row_height = 62
@@ -126,7 +126,7 @@ def render_manual_receipt(payment: ManualPayment, contact: Contact, *, confirmed
     ]
     if payment.account_number:
         rows.append(("Cuenta", payment.account_number))
-    rows.append(("Estudiante", payment.student_name or f"{contact.profile_name or '-'} (+{contact.wa_id})"))
+    rows.append(("Estudiante", payment.student_name or f"{contact.profile_name or '-'} ({contact_handle(contact)})"))
 
     row_height = 62
     height = 330 + row_height * len(rows) + 110

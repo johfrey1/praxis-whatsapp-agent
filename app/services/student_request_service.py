@@ -8,7 +8,7 @@ import re
 from dataclasses import dataclass
 
 from app.config import get_settings
-from app.db.models import Contact
+from app.db.models import Contact, contact_handle
 from app.logging_config import get_logger
 from app.services.lead_service import is_valid_email
 from app.whatsapp.client import WhatsAppClient
@@ -97,7 +97,7 @@ def format_request_notification(req: StudentRequest, contact: Contact) -> str:
         f"🪪 Cédula: {req.national_id}",
         f"📱 Teléfono: +{req.phone}",
         f"✉️ {req.email}",
-        f"💬 WhatsApp: +{contact.wa_id}",
+        f"💬 WhatsApp: {contact_handle(contact)}",
         f"📝 Petición: {req.request}",
     ]
     return "\n".join(lines)

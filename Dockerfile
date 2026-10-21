@@ -5,15 +5,20 @@ WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
-RUN apt-get update && apt-get install -y --no-install-recommends curl fonts-dejavu-core \
-    && rm -rf /var/lib/apt/lists/*
+# Parches de seguridad del sistema base + dependencias; usuario sin privilegios (uid 1000)
+RUN apt-get update && apt-get upgrade -y \
+    && apt-get install -y --no-install-recommends curl fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --uid 1000 --create-home --shell /usr/sbin/nologin app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-RUN mkdir -p /app/storage/documents
+RUN mkdir -p /app/storage/documents && chown -R app:app /app/storage
+
+USER app
 
 EXPOSE 8000
 

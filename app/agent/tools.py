@@ -10,7 +10,7 @@ from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import Contact, Conversation, MessageDirection, MessageType
+from app.db.models import Contact, Conversation, MessageDirection, MessageType, has_phone
 from app.config import get_settings
 from app.logging_config import get_logger
 from app.services import (
@@ -72,13 +72,18 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
     {
         "name": "save_lead",
         "description": "Guarda un prospecto y avisa de inmediato a los asesores para que lo contacten. "
-        "Llámala cuando tengas nombre completo y correo. program_interest = lo que quiere lograr con el "
-        "inglés, en sus palabras. Devuelve invalid_email si el correo no es válido.",
+        "Llámala cuando tengas nombre completo, correo y, si WhatsApp no compartió su celular, su "
+        "teléfono. program_interest = lo que quiere lograr con el inglés, en sus palabras. Devuelve "
+        "invalid_email si el correo no es válido, phone_required si falta el teléfono e invalid_phone "
+        "si el que dio no es un número válido: en esos casos pídeselo y vuelve a llamarla.",
         "input_schema": {
             "type": "object",
             "properties": {
                 "full_name": {"type": "string"},
-                "phone": {"type": "string"},
+                "phone": {
+                    "type": "string",
+                    "description": "Celular para llamarlo. Obligatorio si WhatsApp no compartió su número.",
+                },
                 "email": {"type": "string"},
                 "program_interest": {"type": "string", "description": "Curso/nivel de interés"},
                 "preferred_schedule": {"type": "string"},
@@ -252,19 +257,32 @@ async def execute_tool(name: str, tool_input: dict[str, Any], ctx: ToolContext) 
         email = (tool_input.get("email") or "").strip()
         if email and not lead_service.is_valid_email(email):
             return {"error": "invalid_email"}
-        lead = await lead_service.create_lead(
+        # Sin teléfono el asesor no puede llamarlo: el de WhatsApp sirve; si no lo compartió, se pide.
+        raw_phone = (tool_input.get("phone") or "").strip()
+        phone = lead_service.normalize_phone(raw_phone) if raw_phone else None
+        if raw_phone and phone is None:
+            return {"error": "invalid_phone"}
+        if phone is None and has_phone(ctx.contact):
+            phone = ctx.contact.wa_id
+        if phone is None:
+            # Ya lo había dado en esta conversación (el bot no siempre lo repite al actualizar).
+            phone = await lead_service.known_phone(ctx.session, ctx.contact.id)
+        if phone is None:
+            return {"error": "phone_required"}
+        lead, created, notify = await lead_service.save_lead(
             ctx.session,
             contact_id=ctx.contact.id,
             full_name=tool_input.get("full_name"),
-            phone=tool_input.get("phone") or ctx.contact.wa_id,
+            phone=phone,
             email=email or None,
             program_interest=tool_input.get("program_interest"),
             preferred_schedule=tool_input.get("preferred_schedule"),
             comments=tool_input.get("comments"),
         )
-        await conversation_service.notify_staff(
-            ctx.whatsapp_client, ctx.contact, lead_service.format_lead_notification(lead)
-        )
+        if notify:
+            await conversation_service.notify_staff(
+                ctx.whatsapp_client, ctx.contact, lead_service.format_lead_notification(lead, updated=not created)
+            )
         return {"status": "saved", "lead_id": str(lead.id)}
 
     if name == "escalate_to_human":

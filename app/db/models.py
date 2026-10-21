@@ -31,6 +31,12 @@ class MessageType(str, enum.Enum):
     image = "image"
     audio = "audio"
     system = "system"
+    video = "video"
+    sticker = "sticker"
+    location = "location"
+    contacts = "contacts"
+    reaction = "reaction"
+    other = "other"
 
 
 class LeadStatus(str, enum.Enum):
@@ -52,18 +58,36 @@ class Contact(Base):
     __tablename__ = "contacts"
 
     id: Mapped[uuid.UUID] = _uuid_pk()
-    wa_id: Mapped[str] = mapped_column(String(32), unique=True, index=True)
+    # Dirección para escribirle: el celular (573001112233) o, si Meta no lo comparte (usuarios con
+    # nombre de usuario de WhatsApp), su BSUID (CO.1090028550326215).
+    wa_id: Mapped[str] = mapped_column(String(160), unique=True, index=True)
+    # BSUID: id del usuario para este negocio. Meta lo envía en todos los webhooks desde 2026.
+    user_id: Mapped[str | None] = mapped_column(String(160), unique=True, nullable=True)
+    username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     profile_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_new: Mapped[bool] = mapped_column(Boolean, default=True)
     needs_human: Mapped[bool] = mapped_column(Boolean, default=False)
     human_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    first_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
 
     conversations: Mapped[list["Conversation"]] = relationship(back_populates="contact")
     leads: Mapped[list["Lead"]] = relationship(back_populates="contact")
+
+
+def has_phone(contact) -> bool:
+    """False si solo lo conocemos por su BSUID (usuarios con nombre de usuario de WhatsApp)."""
+    return (contact.wa_id or "").isdigit()
+
+
+def contact_handle(contact) -> str:
+    """Cómo mostrarlo al equipo: +celular, o @usuario / BSUID cuando Meta no comparte el número."""
+    if has_phone(contact):
+        return f"+{contact.wa_id}"
+    username = getattr(contact, "username", None)
+    return f"@{username}" if username else contact.wa_id
 
 
 class Conversation(Base):
@@ -78,6 +102,8 @@ class Conversation(Base):
     last_message_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Último aviso al encargado porque el cliente dejó la conversación sin terminar.
+    handoff_notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     contact: Mapped["Contact"] = relationship(back_populates="conversations")
     messages: Mapped[list["Message"]] = relationship(back_populates="conversation", order_by="Message.created_at")
@@ -94,9 +120,28 @@ class Message(Base):
     content: Mapped[str | None] = mapped_column(Text, nullable=True)
     media_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     tool_calls: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    # Salientes: sent | delivered | read | failed, según los webhooks de estado de Meta.
+    delivery_status: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    delivery_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
     conversation: Mapped["Conversation"] = relationship(back_populates="messages")
+
+
+class WebhookEvent(Base):
+    """Bitácora: cada POST de Meta tal como llegó y qué pasó al procesarlo. Permite reconstruir
+    mensajes que fallaron y auditar entregas aunque la conversación no se haya guardado."""
+
+    __tablename__ = "webhook_events"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    payload: Mapped[dict] = mapped_column(JSON)
+    messages_count: Mapped[int] = mapped_column(Integer, default=0)
+    statuses_count: Mapped[int] = mapped_column(Integer, default=0)
+    # received | processed | partial | failed | ignored | invalid_signature
+    outcome: Mapped[str] = mapped_column(String(20), default="received", index=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class Lead(Base):
