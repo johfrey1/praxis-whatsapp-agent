@@ -63,9 +63,14 @@ async def get_or_create_contact(
 
 
 async def get_or_create_active_conversation(session: AsyncSession, contact: Contact) -> Conversation:
+    """La conversación escalada sigue siendo la misma: si el cliente vuelve a escribir, el bot conserva
+    el historial en vez de empezar de cero (antes perdía todo lo que el cliente ya había contado)."""
     result = await session.execute(
         select(Conversation)
-        .where(Conversation.contact_id == contact.id, Conversation.status == ConversationStatus.active)
+        .where(
+            Conversation.contact_id == contact.id,
+            Conversation.status.in_((ConversationStatus.active, ConversationStatus.escalated)),
+        )
         .order_by(Conversation.started_at.desc())
     )
     conversation = result.scalars().first()

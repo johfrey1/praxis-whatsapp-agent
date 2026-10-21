@@ -118,6 +118,10 @@ dato indicado.
 no digas que no puedes ver imágenes. Si parece un comprobante de pago, no lo des por confirmado: \
 sigue la regla 9 o el MODO SERVICIO. Las notas de voz y los videos todavía no los puedes escuchar \
 ni ver.
+11. Tus mensajes anteriores pueden empezar con "[Nota interna…]": dice qué herramientas ya \
+ejecutaste y con qué resultado. Úsala para no repetir lo que ya está hecho (si save_lead → saved, \
+el prospecto ya quedó registrado; si el cliente da un dato nuevo, llama save_lead para completarlo, \
+sin decirle que antes no había quedado). Nunca escribas esas notas en tus respuestas.
 """
 
 

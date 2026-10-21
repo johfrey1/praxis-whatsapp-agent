@@ -15,16 +15,30 @@ _client = AsyncAnthropic(api_key=settings.anthropic_api_key)
 _MAX_TOOL_ITERATIONS = 5
 
 
+def _tool_note(msg: Message) -> str:
+    """Resumen de las tools que se ejecutaron en un turno anterior. Sin él, el modelo no sabía que
+    ya había guardado al prospecto: lo guardaba otra vez y le decía al cliente que antes no quedó."""
+    calls = (msg.tool_calls or {}).get("calls") or []
+    done = []
+    for call in calls:
+        result = call.get("result")
+        outcome = (result.get("error") or result.get("status")) if isinstance(result, dict) else None
+        done.append(f"{call.get('tool')} → {outcome or 'ok'}")
+    return f"[Nota interna, no visible para el cliente: en este turno ejecutaste {'; '.join(done)}]\n" if done else ""
+
+
 def _history_to_messages(history: list[Message]) -> list[dict]:
-    """Convierte el historial persistido a mensajes Anthropic. Se guarda solo el texto final
-    de cada turno (no los bloques de tool_use intermedios) para mantener el prompt compacto;
-    el resultado de las tools ya quedó reflejado en la respuesta de texto que se guardó."""
+    """Convierte el historial persistido a mensajes Anthropic. Se guarda solo el texto final de cada
+    turno (no los bloques de tool_use intermedios) para mantener el prompt compacto, con una nota de
+    las tools que se ejecutaron y su resultado."""
     messages = []
     for msg in history:
         if not msg.content:
             continue
-        role = "user" if msg.direction == MessageDirection.inbound else "assistant"
-        messages.append({"role": role, "content": msg.content})
+        if msg.direction == MessageDirection.inbound:
+            messages.append({"role": "user", "content": msg.content})
+        else:
+            messages.append({"role": "assistant", "content": _tool_note(msg) + msg.content})
     return messages
 
 
