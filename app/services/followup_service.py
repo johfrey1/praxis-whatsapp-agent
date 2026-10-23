@@ -3,7 +3,7 @@ que se le pase a una persona, el encargado recibe un aviso con lo que preguntó 
 import asyncio
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -102,7 +102,14 @@ async def sweep(session: AsyncSession, whatsapp_client: WhatsAppClient, now: dat
     for conversation, contact in result.all():
         if contact.wa_id in internal:
             continue
-        start = max(since, conversation.handoff_notified_at or since)
+        # La ventana se cuenta desde su último mensaje, no desde ahora: si no, a las 24 h el save_lead
+        # sale de la ventana antes que el "gracias" que vino después y se avisa de una conversación ya cerrada.
+        last_at = await session.scalar(
+            select(func.max(Message.created_at)).where(Message.conversation_id == conversation.id)
+        )
+        start = last_at - LOOKBACK
+        if conversation.handoff_notified_at:
+            start = max(start, conversation.handoff_notified_at)
         messages = list(
             (
                 await session.execute(
